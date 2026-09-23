@@ -105,3 +105,21 @@ tag, Release com o asset) → `deploy-ha` (HACS baixa, `?v=` no recurso,
 conferência no destino). Workflows são gerados por `IA/tools/mw-devops.sh
 apply` — editar aqui é perder na próxima aplicação. Exige os segredos
 `HA_URL`/`HA_TOKEN`. Conferir: `IA/tools/mw-devops.sh check <repo>`.
+
+## Ao publicar a aba de gauges na vitrine
+
+A aba GAUGES 3D vive no `/mw-components`, publicado por
+`PROJECTS/ha-dashboards/scripts/mw_components/deploy.py`. **`config/save`
+substitui o dashboard inteiro**: em 23/09/2026 publicar essa aba apagou as
+abas NAVEGAÇÃO e NAVEGAÇÃO · OPÇÕES — sem erro nenhum, o script disse sucesso.
+
+O `deploy.py` já foi corrigido para **enxertar** as views que o gerador não
+cria e para falhar se alguma view que existia antes sumir. Confira as duas
+linhas na saída antes de dar a publicação por boa:
+
+```
+preservadas ............. N views fora do gerador: ...
+  ✓ nenhuma view que existia antes se perdeu
+```
+
+Regra global 130 · skill `ha-showcase-de-componentes`.
