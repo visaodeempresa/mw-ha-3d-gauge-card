@@ -4,7 +4,7 @@
  */
 (() => {
   "use strict";
-  const VERSION = "0.2.1";
+  const VERSION = "0.2.2";
 
   // >>> paper-palette v1 — fonte canônica: /Volumes/SSD-T1-01/CLAUDE-SSD/IA/lib/paper-palette/paper-palette.js
   // 49 papéis encardidos: 7 matizes do arco-íris × 7 tons (1 = quase branco,
@@ -1110,6 +1110,16 @@
       (g.box ? '<polygon points="' + g.parts.sil + '"/>' : '<path d="' + g.parts.sil + '"/>') +
       "</clipPath>";
 
+    // O fluido tem recorte PRÓPRIO, que termina em yF. Sem ele o prisma desce
+    // abaixo da faixa do valor — a faixa aparece desenhada e some na prática.
+    if (g.footZone > 0) {
+      const fs = g.box
+        ? boxParts(g.x0, g.yF, g.w, g.h - g.footZone, g.dx, g.dy).sil
+        : cylParts(g.x0, g.yF, g.w, g.h - g.footZone, g.dy, g.vert).sil;
+      d += '<clipPath id="' + uid + '-clipf">' +
+        (g.box ? '<polygon points="' + fs + '"/>' : '<path d="' + fs + '"/>') + "</clipPath>";
+    }
+
     if (c.fill_style === "segments") {
       const nseg = Math.max(3, Math.min(40, Number(c.segments) || 12));
       const step = g.run / nseg;
@@ -1117,7 +1127,7 @@
       for (let i = 1; i < nseg; i++) {
         const u = i * step;
         bars += vert
-          ? '<rect x="' + n2(g.x0 - 4) + '" y="' + n2(g.yBase - u - 1) + '" width="' +
+          ? '<rect x="' + n2(g.x0 - 4) + '" y="' + n2(g.yF - u - 1) + '" width="' +
             n2(g.T + g.dx + 8) + '" height="2.2" fill="#000"/>'
           : '<rect x="' + n2(g.x0 + u - 1) + '" y="' + n2(g.yBase - g.T - g.dy - 4) +
             '" width="2.2" height="' + n2(g.T + g.dy + 8) + '" fill="#000"/>';
@@ -1270,7 +1280,8 @@
 
     return '<g class="g3d-tube" transform="translate(' + n2(ox) + "," + n2(oy) + ')">' +
       body +
-      '<g clip-path="url(#' + uid + '-clip)"' + seg + ">" + floor + ghost +
+      '<g clip-path="url(#' + uid + (g.footZone > 0 ? "-clipf" : "-clip") + ')"' + seg + ">" +
+      floor + ghost +
       '<g class="g3d-fill" data-i="' + i + '" opacity="' + n2(fop) + '">' + wall + fluid +
       "</g></g>" +
       '<g class="g3d-glass">' + varnish + outline + "</g>" + cap + "</g>";
@@ -1413,9 +1424,13 @@
         parts.push('<text class="g3d-val" x="' + n2(g.x0 + g.T / 2) + '" y="' + n2(yVal) +
           '" text-anchor="middle" style="font-size:' + n2(fs) + 'px"></text>');
         if (hasLabel) {
+          // "INFOGRAPHICS" mede mais que o tubo: o texto se aperta, o tubo não.
+          const lw = Math.max(10, g.T - 6);
+          const est = String(c.label).length * 5.1;
           parts.push('<text class="g3d-lbl" x="' + n2(g.x0 + g.T / 2) + '" y="' +
-            n2(g.yBase - (g.footZone ? g.footZone * 0.14 : 10)) +
-            '" text-anchor="middle">' + esc(c.label) + "</text>");
+            n2(g.yBase - (g.footZone ? g.footZone * 0.14 : 10)) + '" text-anchor="middle"' +
+            (est > lw ? ' textLength="' + n2(lw) + '" lengthAdjust="spacingAndGlyphs"' : "") +
+            ">" + esc(c.label) + "</text>");
         }
       } else {
         parts.push('<text class="g3d-val" x="' + n2(g.x0 + g.L - 8) + '" y="' +
@@ -1465,13 +1480,14 @@
 .g3d-zl{font-size:9px;fill:var(--g3d-ink-dim)}
 .g3d-val{font-weight:800;fill:var(--g3d-valc);paint-order:stroke;
   stroke:var(--g3d-valhalo);stroke-width:3.4px;stroke-linejoin:round;letter-spacing:-.01em}
-.g3d-lbl{font-size:7.5px;fill:var(--g3d-ink-dim);text-transform:uppercase;letter-spacing:.06em}
+.g3d-lbl{font-size:7.5px;fill:var(--g3d-ink-dim);text-transform:uppercase;letter-spacing:.06em;
+  paint-order:stroke;stroke:var(--g3d-valhalo);stroke-width:2.2px;stroke-linejoin:round}
 .ft{display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:6px;min-height:0}
 .ft.hide{display:none}
 .ft .v{font-size:26px;font-weight:800;color:var(--g3d-valc);line-height:1}
-.ft .u{font-size:12px;font-weight:600;opacity:.7}
-.ft .l{font-size:10px;opacity:.6;text-transform:uppercase;letter-spacing:.06em}
-.mm{display:flex;justify-content:space-between;font-size:10px;opacity:.55;margin-top:2px}
+.ft .u{font-size:12px;font-weight:600;color:var(--g3d-ink-dim)}
+.ft .l{font-size:10px;color:var(--g3d-ink-dim);text-transform:uppercase;letter-spacing:.06em}
+.mm{display:flex;justify-content:space-between;font-size:10px;color:var(--g3d-ink-dim);margin-top:2px}
 .mm.hide{display:none}
 .tap{cursor:pointer}
 .err{padding:12px;font-size:13px;color:var(--error-color,#c33)}
@@ -1607,6 +1623,11 @@
       const [pl, pd] = paperColors(c.paper, c.paper_dark);
       const dark = c.paper_dark === true;
       const ink = paperInk(dark);   // { text, dim, line }
+      // A `dim` canônica é estética (α .58/.62) e no papel claro fica em 3,6:1.
+      // A tinta que o dono LÊ tem piso; só a opacidade cede.
+      const inkT = toRGB(ink.text);
+      const dimA = dark ? 0.70 : 0.80;
+      const inkDim = "rgba(" + inkT.r + "," + inkT.g + "," + inkT.b + "," + dimA + ")";
       const flat = c.depth === "flat";
       const drop = flat ? "none" : c.depth === "soft"
         ? "0 4px 12px rgba(0,0,0,.12)"
@@ -1622,7 +1643,7 @@
       const vars = {
         "--g3d-paper": dark ? paperDarkGradient(c.paper) : paperGradient(c.paper),
         "--g3d-ink": ink.text,
-        "--g3d-ink-dim": ink.dim,
+        "--g3d-ink-dim": inkDim,
         "--g3d-ink-line": ink.line,
         "--g3d-accent": "var(--primary-color)",
         "--g3d-relief": relief,
@@ -1773,11 +1794,14 @@
         r.setAttribute("stroke", shade(b, 0.66, 0.9));
       });
       set("--g3d-caustic", shade(base, 0.30, 0.24));
-      // Onde o valor cai: papel enquanto o fluido não chega, fluido depois.
-      const yTxt = c.value_position === "in_body"
-        ? (g.vert ? (c.label ? 24 : 12) : g.T / 2)
-        : 0;
-      const sobreFluido = c.value_position === "in_body" && !g.footZone && frac * g.run > yTxt;
+      // Onde o valor cai, medido: o glifo está sobre o fluido quando fica entre
+      // a superfície (yF - frac*run) e a base do curso (yF).
+      const yVal = g.vert
+        ? (g.footZone ? g.yBase - (c.label ? g.footZone * 0.42 : g.footZone * 0.30)
+          : g.yBase - (c.label ? 24 : 12))
+        : g.yBase - g.T / 2;
+      const sobreFluido = c.value_position === "in_body" &&
+        yVal <= g.yF && yVal > g.yF - frac * g.run;
       const valc = v == null ? "var(--g3d-ink)"
         : (sobreFluido ? inkOf(base, base) : inkOf(base, plColor, pdColor));
       set("--g3d-valc", valc);

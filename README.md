@@ -40,6 +40,10 @@ cada repaint e é o que derruba a rolagem no celular. Por isso o preço de um n�
 | `high` | **sombra do fluido na parede**, aresta de luz, fluido em 2 eixos, fundo do tubo, pedestal em prisma | 29–33 |
 | `ultra` | 2º brilho, cáustica no chão, sombra sob a tampa | 31–36 |
 
+Esses números são **o corpo do gauge**. O que não é tier soma por cima, medido na
+bancada: **régua +21 nós**, **zonas +8**, **tubo gêmeo +15**. Um gauge com régua e
+comparativo chega a ~72 — quem dimensiona uma aba precisa contar isso, não só o tier.
+
 `quality: auto` (padrão) resolve **`ultra` no desktop**, **`high` no celular**
 (`pointer: coarse` ou largura < 500 px) e **`medium`** com `prefers-reduced-motion`.
 Do mais pobre ao mais rico são ~13 nós: o realismo aqui é barato.
@@ -61,12 +65,22 @@ Do mais pobre ao mais rico são ~13 nós: o realismo aqui é barato.
 O verniz do vidro é **de bordas** — escuro nas margens, transparente no miolo. É o que
 deixa a cor do fluido cheia em vez de lavada.
 
+### Tema
+
+O papel **não** segue o tema do HA: `paper_dark` é explícito, como em toda a família
+MW de papel. Uma folha clara dentro de um painel escuro é a identidade, não um
+descuido — troque com `paper_dark: true` quando quiser a rampa de noite.
+
 ### A faixa do valor
 
 Nas duas referências o número mora no **corpo claro**, e o fluido nunca desce até lá.
 `label_zone` (padrão ligado, gauge em pé com `value_position: in_body`) reserva essa
 faixa: o curso do fluido encurta e o valor sai na cor cheia da escala, legível sem
 precisar escurecer. Desligue para o fluido usar o tubo inteiro.
+
+A faixa tem **recorte próprio** (`-clipf`, terminando em `yF`). Sem ele o prisma do
+fluido desce por baixo dela e a faixa aparece desenhada mas some na prática — só
+ficaria limpa em 100 %.
 
 O valor nunca é escrito cru: `inkOf()` cede luminosidade até bater **4.5:1** contra os
 **dois extremos** do gradiente de papel (ou contra o fluido, quando cai sobre ele).
@@ -390,7 +404,7 @@ categoria **Dashboard**. Depois instale e recarregue a página com ⌘⇧R.
 
 ```bash
 node --check dist/mw-3d-gauge-card.js    # sintaxe
-node tools/probe.js                      # 158 provas headless
+node tools/probe.js                      # 167 provas headless
 ```
 
 A bancada visual é `tools/preview.html` — **não abre por `file://`**, precisa de HTTP

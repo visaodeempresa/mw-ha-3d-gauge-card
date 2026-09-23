@@ -408,6 +408,37 @@ ok(!/filter\s*:/.test(animadas),
   "filter de CSS em elemento que translada — rasteriza a subárvore a cada quadro");
 ok(!/\.g3d-ico ha-icon\{[^}]*filter/.test(cssAll), "o ícone que viaja não pode ter drop-shadow");
 
+/* 17k. o recorte do fluido termina em yF: sem isto a faixa do valor aparece
+   desenhada e some na prática, porque o prisma desce por baixo dela */
+const comZ = svg({ value_position: "in_body", label: "X" });
+has(comZ, "-clipf", "faltou o recorte próprio do fluido");
+ok(/clip-path="url\(#t-clipf\)"/.test(comZ), "o fluido não está usando o recorte da faixa");
+const gZ = API.geometry(Object.assign({}, API.DEFAULTS, { value_position: "in_body" }));
+const silF = (comZ.match(/id="t-clipf">[^]*?\/>/) || [""])[0];
+ok(silF.indexOf(String(Math.round(gZ.yBase))) === -1,
+  "o recorte do fluido ainda chega à base do tubo — a faixa não é respeitada");
+ok(/clip-path="url\(#t-clip\)"/.test(svg({ label_zone: false })),
+  "sem faixa, o fluido volta a usar o recorte do tubo inteiro");
+
+/* 17l. a máscara de segmentos mede o mesmo curso que o fluido */
+const segM = svg({ fill_style: "segments", segments: 4, value_position: "in_body" });
+const yBar = parseFloat((segM.match(/<mask[^]*?<rect[^>]*?y="([\d.]+)"/) || [])[1]);
+ok(!Number.isFinite(yBar) || yBar <= gZ.yF,
+  `a primeira barra de segmento saiu em y=${yBar}, abaixo do curso (yF=${gZ.yF})`);
+
+/* 17m. a tinta fraca do papel tem piso de leitura, não só estética */
+const dimClaro = html(mk({ entity: "sensor.temp" })).match(/--g3d-ink-dim:(rgba\([^)]+\))/);
+ok(dimClaro && parseFloat(dimClaro[1].split(",")[3]) >= 0.72,
+  "a tinta fraca do papel claro ficou transparente demais para 4.5:1");
+
+/* 17n. o rótulo pequeno tem halo e não estoura a largura do tubo */
+has(CODE.slice(CODE.indexOf(".g3d-lbl{"), CODE.indexOf("}", CODE.indexOf(".g3d-lbl{"))),
+  "paint-order", "o rótulo pequeno precisa do mesmo halo do valor");
+has(svg({ label: "INFOGRAPHICS", value_position: "in_body" }), "textLength",
+  "rótulo longo deveria se apertar para caber no tubo");
+hasnt(svg({ label: "OK", value_position: "in_body" }), "textLength",
+  "rótulo curto não precisa ser apertado");
+
 /* 18. relevo de papel é sombra parada: nada de animar propriedade cara */
 const css = CODE.slice(CODE.indexOf("const CSS = `"), CODE.indexOf("`;", CODE.indexOf("const CSS = `")));
 hasnt(css, "@keyframes", "o card não deveria ter @keyframes");
