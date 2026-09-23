@@ -63,3 +63,10 @@ curl -s -H 'Accept-Encoding: gzip' http://192.168.1.71:8123/hacsfiles/$R/$C.js |
 sintoma é `curl` mostrar o novo e a tela continuar velha. Depois, ⌘⇧R.
 
 A vitrine fica em `ha-dashboards/scripts/mw_components/gerar.py`, função `v_gauges()`.
+
+## DevOps
+`develop` (padrão) → PR → `main` → auto-release (bump pelo assunto do commit,
+tag, Release com o asset) → `deploy-ha` (HACS baixa, `?v=` no recurso,
+conferência no destino). Workflows são gerados por `IA/tools/mw-devops.sh
+apply` — editar aqui é perder na próxima aplicação. Exige os segredos
+`HA_URL`/`HA_TOKEN`. Conferir: `IA/tools/mw-devops.sh check <repo>`.
