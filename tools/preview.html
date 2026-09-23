@@ -79,6 +79,19 @@ function anima(){
   const h = { states: {...S}, callService(){}, themes:{} };
   cards.forEach(c => c.hass = h);
 }
+function medir(){
+  const out=[...document.querySelectorAll('mw-3d-gauge-card')].reduce((a,c)=>{
+    const svg=c.shadowRoot&&c.shadowRoot.querySelector('.g3d-svg'); if(!svg) return a;
+    const q=svg.dataset.q||'?';
+    const defs=svg.querySelector('defs');
+    const total=svg.querySelectorAll('*').length;
+    const dn=defs?defs.querySelectorAll('*').length:0;
+    (a[q]=a[q]||[]).push(total-dn); return a;},{});
+  Object.keys(out).forEach(q=>{const v=out[q];
+    console.log(q, 'n=',v.length, 'nós de desenho: min',Math.min(...v),'máx',Math.max(...v));});
+  return out;
+}
+window.medir=medir;
 window.addEventListener("load", () => {
   const P = ["red-4","orange-4","violet-5","green-4","blue-4"];
   const ICO = ["mdi:brain","mdi:lightbulb","mdi:monitor","mdi:tablet","mdi:chart-line"];
@@ -103,6 +116,11 @@ window.addEventListener("load", () => {
   r2.appendChild(card({entity:"sensor.umidade",orientation:"horizontal",shape:"cylinder",icon:"mdi:water-percent",length:280},"horizontal · cilindro",true));
   r2.appendChild(card({entity:"sensor.umidade",orientation:"horizontal",shape:"box",icon:"mdi:water-percent",length:280},"horizontal · caixa",true));
   app.appendChild(r2);
+
+  sec("Qualidade — os quatro níveis", ["low","medium","high","ultra"].map(q=>[
+    {entity:"sensor.p65", quality:q, icon:"mdi:water", value_mode:"percent", show_name:false, ticks:"none", label:q.toUpperCase()},q]));
+  sec("Qualidade — no paralelepípedo", ["low","medium","high","ultra"].map(q=>[
+    {entity:"sensor.p45", quality:q, shape:"box", icon:"mdi:water", value_mode:"percent", show_name:false, ticks:"none", cap:false},q]));
 
   sec("Relevo", ["3d","soft","flat"].map(d=>[
     {entity:"sensor.co2",depth:d,shape:"box",icon:"mdi:molecule-co2",paper:"orange-3"},d]));

@@ -4,7 +4,7 @@
  */
 (() => {
   "use strict";
-  const VERSION = "0.1.0";
+  const VERSION = "0.2.0";
 
   // >>> paper-palette v1 — fonte canônica: /Volumes/SSD-T1-01/CLAUDE-SSD/IA/lib/paper-palette/paper-palette.js
   // 49 papéis encardidos: 7 matizes do arco-íris × 7 tons (1 = quase branco,
@@ -655,6 +655,10 @@
     length: 220,
     iso: 18,
     glass: true,
+    quality: "auto",
+    specular: 0.55,
+    fluid_opacity: null,
+    fluid_depth: 0.30,
     cap: true,
     base_plate: true,
     ground_shadow: true,
@@ -695,7 +699,9 @@
     max: "Máximo (vazio = automático)",
     orientation: "Orientação", shape: "Forma do corpo", depth: "Relevo",
     thickness: "Espessura", length: "Comprimento", iso: "Profundidade 3D",
-    glass: "Vidro (reflexo)", cap: "Tampa no topo", base_plate: "Placa de base",
+    glass: "Vidro (reflexo)", quality: "Nível de realismo",
+    specular: "Brilho do vidro", fluid_opacity: "Opacidade do fluido",
+    fluid_depth: "Profundidade do fluido", cap: "Tampa no topo", base_plate: "Placa de base",
     ground_shadow: "Sombra no chão",
     paper_dark: "Papel de noite", paper: "Tom de papel",
     fill_style: "Preenchimento", segments: "Nº de segmentos",
@@ -716,6 +722,13 @@
   const OPT = {
     orientation: [{ value: "vertical", label: "Vertical" }, { value: "horizontal", label: "Horizontal" }],
     shape: [{ value: "cylinder", label: "Cilíndrico" }, { value: "box", label: "Paralelepípedo" }],
+    quality: [
+      { value: "auto", label: "Automático (ultra no desktop, alto no celular)" },
+      { value: "ultra", label: "Ultra — todas as camadas" },
+      { value: "high", label: "Alto — sombra na parede, aresta e fundo" },
+      { value: "medium", label: "Médio — brilho, menisco e sombra de chão" },
+      { value: "low", label: "Baixo — faces chapadas" },
+    ],
     depth: [{ value: "3d", label: "Relevo cheio" }, { value: "soft", label: "Suave" }, { value: "flat", label: "Chapado" }],
     fill_style: [{ value: "liquid", label: "Líquido (contínuo)" }, { value: "segments", label: "Segmentos" }],
     color_scale: [
@@ -743,6 +756,7 @@
     ["forma", "FORMA", "mdi:cube-outline"],
     ["papel", "PAPEL", "mdi:palette-swatch"],
     ["cor", "COR", "mdi:gradient-horizontal"],
+    ["fluido", "FLUIDO", "mdi:water-opacity"],
     ["regua", "RÉGUA", "mdi:ruler"],
     ["zonas", "ZONAS", "mdi:format-color-fill"],
     ["comparar", "COMPARAR", "mdi:compare-horizontal"],
@@ -971,119 +985,95 @@
     return v.toFixed(d).replace(/\.0+$/, "").replace(".", ",") + (unit ? " " + unit : "");
   };
 
-  // O corpo do tubo, uma vez por tubo (o comparativo "side" pede dois).
-  const tubeMarkup = (c, g, uid, i, ox, oy) => {
-    const p = g.parts;
-    const fw = g.vert ? g.w : g.run;
-    const fh = g.vert ? g.run : g.h;
-    const fp = g.box ? boxParts(g.x0, g.yBase, fw, fh, g.dx, g.dy)
-      : cylParts(g.x0, g.yBase, fw, fh, g.dy, g.vert);
-    const cid = uid + "-clip" + i, gid = uid + "-fill" + i;
-    const clip = 'clip-path="url(#' + cid + ')"';
-    const flat = c.depth === "flat";
-    let inner = "", liquid = "", glass = "", cap = "";
+  // ── níveis de realismo ──────────────────────────────────────────────────
+  // Nenhum tier usa <filter>: filtro rasteriza a subárvore a cada repaint e é o
+  // que derruba a rolagem no celular. Todo o realismo sai de gradiente, que a
+  // GPU compila uma vez. Por isso o preço de um tier é número de nós parados.
+  const QLV = { low: 0, medium: 1, high: 2, ultra: 3 };
 
-    if (g.box) {
-      inner = '<polygon points="' + p.side + '" fill="var(--g3d-p-side)"/>' +
-        '<polygon points="' + p.top + '" fill="var(--g3d-p-top)"/>' +
-        '<polygon points="' + p.front + '" fill="var(--g3d-p-in)"/>';
-      liquid = '<polygon points="' + fp.side + '" fill="var(--g3d-f-side' + i + ')"/>' +
-        '<polygon points="' + fp.top + '" fill="var(--g3d-f-top' + i + ')"/>' +
-        '<polygon points="' + fp.front + '" fill="url(#' + gid + ')"/>';
-      glass = '<polygon points="' + p.side + '" fill="var(--g3d-g-side)"/>' +
-        '<polygon points="' + p.top + '" fill="var(--g3d-g-top)"/>' +
-        '<polygon points="' + p.front + '" fill="url(#' + uid + '-glass)"/>' +
-        '<polygon points="' + p.sil + '" fill="none" stroke="var(--g3d-edge)" stroke-width="1"/>';
-    } else {
-      const e = (o, f, cls) => '<ellipse ' + (cls ? 'class="' + cls + '" ' : "") + 'cx="' + n2(o.cx) +
-        '" cy="' + n2(o.cy) + '" rx="' + n2(o.rx) + '" ry="' + n2(o.ry) + '" fill="' + f + '"/>';
-      const r = (o, f) => '<rect x="' + n2(o.x) + '" y="' + n2(o.y) + '" width="' + n2(o.w) +
-        '" height="' + n2(o.h) + '" fill="' + f + '"/>';
-      inner = e(p.footE, "var(--g3d-p-side)") + r(p.body, "var(--g3d-p-in)");
-      liquid = e(fp.footE, "var(--g3d-f-side" + i + ")") + r(fp.body, "url(#" + gid + ")") +
-        e(fp.capE, "var(--g3d-f-top" + i + ")") +
-        '<ellipse cx="' + n2(fp.capE.cx) + '" cy="' + n2(fp.capE.cy) + '" rx="' + n2(fp.capE.rx * 0.72) +
-        '" ry="' + n2(fp.capE.ry * 0.72) + '" fill="var(--g3d-f-meniscus' + i + ')"/>';
-      glass = r(p.body, "url(#" + uid + "-glass)") +
-        '<path d="' + p.sil + '" fill="none" stroke="var(--g3d-edge)" stroke-width="1"/>' +
-        e(p.capE, "var(--g3d-p-mouth)") +
-        '<ellipse cx="' + n2(p.capE.cx) + '" cy="' + n2(p.capE.cy) + '" rx="' + n2(p.capE.rx) +
-        '" ry="' + n2(p.capE.ry) + '" fill="none" stroke="var(--g3d-edge)" stroke-width="1"/>';
-    }
-
-    // Reflexo especular: uma faixa fina, fora do centro, ao longo do eixo.
-    let spec = "";
-    if (c.glass && !flat) {
-      const sw = Math.max(3, g.T * 0.13);
-      spec = g.vert
-        ? '<rect x="' + n2(g.x0 + g.T * 0.20) + '" y="' + n2(g.yBase - g.L + 4) + '" width="' + n2(sw) +
-          '" height="' + n2(g.L - 8) + '" rx="' + n2(sw / 2) + '" fill="var(--g3d-spec)"/>'
-        : '<rect x="' + n2(g.x0 + 4) + '" y="' + n2(g.yBase - g.T + g.T * 0.20) + '" width="' + n2(g.L - 8) +
-          '" height="' + n2(sw) + '" rx="' + n2(sw / 2) + '" fill="var(--g3d-spec)"/>';
-    }
-
-    // A tampa: um corpinho sólido encaixado na ponta, que o líquido nunca alcança.
-    if (c.cap && g.capH > 0) {
-      const ch = g.capH + (g.box ? 0 : g.dy);
-      if (g.box) {
-        const cp = boxParts(g.x0 - 1.5, g.yBase - g.h + (g.vert ? ch : 0), g.vert ? g.w + 3 : ch,
-          g.vert ? ch : g.h + 3, g.dx, g.dy);
-        cap = '<polygon points="' + cp.side + '" fill="var(--g3d-cap-side)"/>' +
-          '<polygon points="' + cp.top + '" fill="var(--g3d-cap-top)"/>' +
-          '<polygon points="' + cp.front + '" fill="var(--g3d-cap)"/>';
-      } else {
-        const cx0 = g.vert ? g.x0 - 1.5 : g.x0 + g.w - ch;
-        const cyB = g.vert ? g.yBase - g.h + ch : g.yBase;
-        const cp = cylParts(cx0, cyB, g.vert ? g.w + 3 : ch, g.vert ? ch : g.h + 3, g.dy, g.vert);
-        cap = '<path d="' + cp.sil + '" fill="var(--g3d-cap)"/>' +
-          '<ellipse cx="' + n2(cp.capE.cx) + '" cy="' + n2(cp.capE.cy) + '" rx="' + n2(cp.capE.rx) +
-          '" ry="' + n2(cp.capE.ry) + '" fill="var(--g3d-cap-top)"/>';
-      }
-    }
-
-    const clipShape = g.box ? '<polygon points="' + p.sil + '"/>' : '<path d="' + p.sil + '"/>';
-    const seg = c.fill_style === "segments" ? ' mask="url(#' + uid + '-seg)"' : "";
-    const ghost = c.secondary_entity && c.compare_mode === "ghost"
-      ? '<g class="g3d-ghost" data-i="' + i + '">' +
-        (g.box ? '<polygon points="' + fp.front + '" fill="var(--g3d-ghost)"/>' +
-          '<polygon points="' + fp.top + '" fill="var(--g3d-ghost)"/>'
-          : '<rect x="' + n2(fp.body.x) + '" y="' + n2(fp.body.y) + '" width="' + n2(fp.body.w) +
-            '" height="' + n2(fp.body.h) + '" fill="var(--g3d-ghost)"/>' +
-            '<ellipse cx="' + n2(fp.capE.cx) + '" cy="' + n2(fp.capE.cy) + '" rx="' + n2(fp.capE.rx) +
-            '" ry="' + n2(fp.capE.ry) + '" fill="var(--g3d-ghost)"/>') + "</g>"
-      : "";
-
-    return '<g class="g3d-tube" transform="translate(' + n2(ox) + ',' + n2(oy) + ')">' +
-      '<defs><clipPath id="' + cid + '">' + clipShape + "</clipPath>" +
-      '<linearGradient id="' + gid + '" x1="0" y1="0" x2="' + (g.vert ? "1" : "0") +
-      '" y2="' + (g.vert ? "0" : "1") + '">' +
-      '<stop class="g3d-s0" data-i="' + i + '" offset="0"/>' +
-      '<stop class="g3d-s1" data-i="' + i + '" offset="0.34"/>' +
-      '<stop class="g3d-s2" data-i="' + i + '" offset="1"/>' +
-      "</linearGradient></defs>" +
-      inner +
-      "<g " + clip + seg + ">" + ghost +
-      '<g class="g3d-fill" data-i="' + i + '">' + liquid + "</g></g>" +
-      '<g class="g3d-glass">' + glass + spec + "</g>" + cap + "</g>";
+  const autoQuality = () => {
+    try {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return "medium";
+      if (window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 500) return "high";
+    } catch (_) { /* fora do navegador */ }
+    return "ultra";
   };
 
-  // A cena inteira: chão, placa, um ou dois tubos, régua, zonas e o valor.
-  const svgFor = (c, g, uid, rng) => {
-    const parts = [];
-    const cx = g.vert ? g.x0 + (g.T + g.dx) / 2 : g.x0 + (g.L + g.dx) / 2;
-    const cyTube = g.yBase - g.T / 2;
-    const flat = c.depth === "flat";
-    const twinOff = g.twin ? (g.vert ? g.T + 10 : 0) : 0;
-    const twinOffY = g.twin && !g.vert ? g.T + 10 : 0;
+  const qOf = (c) => {
+    const q = !c.quality || c.quality === "auto" ? autoQuality() : c.quality;
+    return QLV[q] === undefined ? 2 : QLV[q];
+  };
 
-    // defs comuns aos dois tubos
-    let defs = '<linearGradient id="' + uid + '-glass" x1="0" y1="0" x2="' +
-      (g.vert ? "1" : "0") + '" y2="' + (g.vert ? "0" : "1") + '">' +
-      '<stop offset="0" stop-color="var(--g3d-g0)"/>' +
-      '<stop offset="0.32" stop-color="var(--g3d-g1)"/>' +
-      '<stop offset="1" stop-color="var(--g3d-g2)"/></linearGradient>' +
-      '<radialGradient id="' + uid + '-ground"><stop offset="0" stop-color="rgba(0,0,0,.30)"/>' +
-      '<stop offset="1" stop-color="rgba(0,0,0,0)"/></radialGradient>';
+  // ── defs: um bloco só, compartilhado pelos dois tubos ───────────────────
+  const defsFor = (c, g, uid, q) => {
+    const vert = g.vert;
+    // transversal ao eixo (dá volume ao corpo e ao fluido)
+    const T1 = vert ? 'x1="0" y1="0" x2="1" y2="0"' : 'x1="0" y1="0" x2="0" y2="1"';
+    // ao longo do eixo, da superfície do fluido para a base
+    const AX = vert ? 'x1="0" y1="0" x2="0" y2="1"' : 'x1="1" y1="0" x2="0" y2="0"';
+    // da parede longe do fluido até encostar nele
+    const WL = vert ? 'x1="0" y1="0" x2="0" y2="1"' : 'x1="1" y1="0" x2="0" y2="0"';
+    const lin = (id, dir, stops) =>
+      '<linearGradient id="' + uid + "-" + id + '" ' + dir + ">" + stops + "</linearGradient>";
+    const st = (off, col, cls, i) => '<stop ' + (cls ? 'class="' + cls + '" data-i="' + i + '" ' : "") +
+      'offset="' + off + '" stop-color="' + col + '"/>';
+
+    let d = "";
+
+    // corpo em papel: a luz entra pela esquerda/topo e morre na borda oposta
+    d += lin("body", T1,
+      st(0, "var(--g3d-b0)") + st("0.34", "var(--g3d-b1)") + st("0.72", "var(--g3d-b2)") +
+      st(1, "var(--g3d-b3)"));
+    d += lin("side", vert ? 'x1="0" y1="0" x2="0" y2="1"' : 'x1="1" y1="0" x2="0" y2="0"',
+      st(0, "var(--g3d-s0c)") + st(1, "var(--g3d-s1c)"));
+
+    // verniz de BORDAS: escuro nas margens, transparente no meio — é o que
+    // dá vidro sem lavar a cor do fluido (o erro da v0.1).
+    if (q >= 1) {
+      d += lin("varnish", T1,
+        st(0, "var(--g3d-v-edge)") + st("0.10", "var(--g3d-v-mid)") +
+        st("0.24", "transparent") + st("0.76", "transparent") +
+        st("0.90", "var(--g3d-v-mid)") + st(1, "var(--g3d-v-edge2)"));
+      d += lin("spec", T1,
+        st(0, "transparent") + st("0.45", "var(--g3d-spec)") + st(1, "transparent"));
+    }
+
+    // fluido: transversal (volume) × eixo (profundidade)
+    for (let i = 0; i < (g.twin ? 2 : 1); i++) {
+      d += lin("f" + i, T1,
+        st(0, "#000", "g3d-s0", i) + st("0.34", "#000", "g3d-s1", i) + st(1, "#000", "g3d-s2", i));
+      if (q >= 2) {
+        d += '<radialGradient id="' + uid + "-men" + i + '" cx="0.40" cy="0.34" r="0.78">' +
+          st(0, "#000", "g3d-m0", i) + st(1, "#000", "g3d-m1", i) + "</radialGradient>";
+      }
+    }
+    if (q >= 2) {
+      d += lin("ax", AX, st(0, "rgba(0,0,0,0)") + st("0.55", "var(--g3d-ax-mid)") +
+        st(1, "var(--g3d-ax-end)"));
+      d += lin("wall", WL, st(0, "rgba(0,0,0,0)") + st("0.62", "var(--g3d-wall-mid)") +
+        st(1, "var(--g3d-wall-end)"));
+    }
+
+    // chão: difusa deslocada + contato duro sob a base
+    if (q >= 1) {
+      d += '<radialGradient id="' + uid + '-ground" cx="0.44" cy="0.5" r="0.5">' +
+        st(0, "rgba(0,0,0,0.38)") + st("0.50", "rgba(0,0,0,0.16)") + st(1, "rgba(0,0,0,0)") +
+        "</radialGradient>";
+    }
+    if (q >= 2) {
+      d += '<radialGradient id="' + uid + '-contact" cx="0.5" cy="0.5" r="0.5">' +
+        st(0, "rgba(0,0,0,0.36)") + st("0.6", "rgba(0,0,0,0.10)") + st(1, "rgba(0,0,0,0)") +
+        "</radialGradient>";
+    }
+    if (q >= 3) {
+      d += '<radialGradient id="' + uid + '-caustic" cx="0.5" cy="0.5" r="0.5">' +
+        st(0, "var(--g3d-caustic)") + st(1, "transparent") + "</radialGradient>";
+    }
+
+    // recorte do tubo: um só, os dois tubos compartilham
+    d += '<clipPath id="' + uid + '-clip">' +
+      (g.box ? '<polygon points="' + g.parts.sil + '"/>' : '<path d="' + g.parts.sil + '"/>') +
+      "</clipPath>";
 
     if (c.fill_style === "segments") {
       const nseg = Math.max(3, Math.min(40, Number(c.segments) || 12));
@@ -1091,32 +1081,210 @@
       let bars = "";
       for (let i = 1; i < nseg; i++) {
         const u = i * step;
-        bars += g.vert
-          ? '<rect x="' + n2(g.x0 - 4) + '" y="' + n2(g.yBase - u - 1) + '" width="' + n2(g.T + g.dx + 8) +
-            '" height="2.2" fill="#000"/>'
-          : '<rect x="' + n2(g.x0 + u - 1) + '" y="' + n2(g.yBase - g.T - g.dy - 4) + '" width="2.2" height="' +
-            n2(g.T + g.dy + 8) + '" fill="#000"/>';
+        bars += vert
+          ? '<rect x="' + n2(g.x0 - 4) + '" y="' + n2(g.yBase - u - 1) + '" width="' +
+            n2(g.T + g.dx + 8) + '" height="2.2" fill="#000"/>'
+          : '<rect x="' + n2(g.x0 + u - 1) + '" y="' + n2(g.yBase - g.T - g.dy - 4) +
+            '" width="2.2" height="' + n2(g.T + g.dy + 8) + '" fill="#000"/>';
       }
-      defs += '<mask id="' + uid + '-seg"><rect x="0" y="0" width="' + n2(g.W) + '" height="' + n2(g.H) +
-        '" fill="#fff"/>' + bars + "</mask>";
+      d += '<mask id="' + uid + '-seg"><rect x="0" y="0" width="' + n2(g.W) + '" height="' +
+        n2(g.H) + '" fill="#fff"/>' + bars + "</mask>";
     }
-    parts.push("<defs>" + defs + "</defs>");
+    return "<defs>" + d + "</defs>";
+  };
 
-    // chão e placa
-    if (c.ground_shadow && !flat) {
-      parts.push('<ellipse cx="' + n2(cx) + '" cy="' + n2(g.yBase + g.plate + 4) + '" rx="' +
-        n2((g.vert ? g.T + twinOff : g.L) * 0.62) + '" ry="' + n2(4.5) +
-        '" fill="url(#' + uid + '-ground)"/>');
+  // ── um tubo: corpo, fluido e verniz, nesta ordem ────────────────────────
+  const tubeMarkup = (c, g, uid, i, ox, oy, q) => {
+    const p = g.parts;
+    const fw = g.vert ? g.w : g.run;
+    const fh = g.vert ? g.run : g.h;
+    const fp = g.box ? boxParts(g.x0, g.yBase, fw, fh, g.dx, g.dy)
+      : cylParts(g.x0, g.yBase, fw, fh, g.dy, g.vert);
+    const poly = (pts2, f, extra) => '<polygon points="' + pts2 + '" fill="' + f + '"' +
+      (extra || "") + "/>";
+    const ell = (o, f, extra) => '<ellipse cx="' + n2(o.cx) + '" cy="' + n2(o.cy) + '" rx="' +
+      n2(o.rx) + '" ry="' + n2(o.ry) + '" fill="' + f + '"' + (extra || "") + "/>";
+    const rct = (o, f, extra) => '<rect x="' + n2(o.x) + '" y="' + n2(o.y) + '" width="' +
+      n2(o.w) + '" height="' + n2(o.h) + '" fill="' + f + '"' + (extra || "") + "/>";
+
+    // ── corpo (papel) ────────────────────────────────────────────────────
+    let body;
+    if (g.box) {
+      body = poly(p.side, "url(#" + uid + "-side)") +
+        poly(p.top, "var(--g3d-p-top)") +
+        poly(p.front, "url(#" + uid + "-body)");
+    } else {
+      body = ell(p.footE, "var(--g3d-p-side)") + rct(p.body, "url(#" + uid + "-body)");
     }
+
+    // ── fluido ───────────────────────────────────────────────────────────
+    // A sombra que o fluido projeta na parede mora DENTRO do grupo que
+    // translada: acompanha o nível sozinha, sem cálculo por quadro.
+    const wallH = Math.max(22, g.T * 0.95);
+    let wall = "";
+    if (q >= 2) {
+      wall = g.vert
+        ? '<rect x="' + n2(g.x0 - g.dx - 2) + '" y="' + n2(g.yBase - fh - wallH) + '" width="' +
+          n2(g.T + g.dx * 2 + 4) + '" height="' + n2(wallH) + '" fill="url(#' + uid + '-wall)"/>'
+        : '<rect x="' + n2(g.x0 + fw) + '" y="' + n2(g.yBase - g.T - g.dy - 2) + '" width="' +
+          n2(wallH) + '" height="' + n2(g.T + g.dy * 2 + 4) + '" fill="url(#' + uid + '-wall)"/>';
+    }
+
+    const axis = q >= 2 ? "url(#" + uid + "-ax)" : null;
+    let fluid;
+    if (g.box) {
+      fluid = poly(fp.side, "var(--g3d-f-side" + i + ")") +
+        poly(fp.top, "var(--g3d-f-top" + i + ")") +
+        poly(fp.front, "url(#" + uid + "-f" + i + ")") +
+        (axis ? poly(fp.front, axis) : "");
+      // aresta de luz na quina frontal/topo — é o corte de vidro da referência
+      if (q >= 2) {
+        const yT = g.vert ? g.yBase - fh : g.yBase - g.h;
+        const xR = g.vert ? g.x0 + fw : g.x0 + fw;
+        fluid += g.vert
+          ? '<line class="g3d-rim" data-i="' + i + '" x1="' + n2(g.x0) + '" y1="' + n2(yT) +
+            '" x2="' + n2(xR) + '" y2="' + n2(yT) + '"/>'
+          : '<line class="g3d-rim" data-i="' + i + '" x1="' + n2(xR) + '" y1="' + n2(yT) +
+            '" x2="' + n2(xR) + '" y2="' + n2(g.yBase) + '"/>';
+      }
+    } else {
+      fluid = ell(fp.footE, "var(--g3d-f-side" + i + ")") +
+        rct(fp.body, "url(#" + uid + "-f" + i + ")") +
+        (axis ? rct(fp.body, axis) : "") +
+        ell(fp.capE, "var(--g3d-f-top" + i + ")");
+      // menisco: anel de borda mais escuro, centro iluminado
+      if (q >= 1) {
+        fluid += ell({ cx: fp.capE.cx, cy: fp.capE.cy, rx: fp.capE.rx * 0.80, ry: fp.capE.ry * 0.80 },
+          q >= 2 ? "url(#" + uid + "-men" + i + ")" : "var(--g3d-f-meniscus" + i + ")");
+      }
+    }
+
+    const seg = c.fill_style === "segments" ? ' mask="url(#' + uid + '-seg)"' : "";
+    // Number(null) é 0: sem este cuidado o fluido nasce invisível.
+    const op = c.fluid_opacity == null || c.fluid_opacity === "" ? NaN : Number(c.fluid_opacity);
+    const fop = Number.isFinite(op) ? op : (g.box ? 1 : 0.94);
+    const ghost = c.secondary_entity && c.compare_mode === "ghost"
+      ? '<g class="g3d-ghost" data-i="' + i + '">' +
+        (g.box ? poly(fp.front, "var(--g3d-ghost)") + poly(fp.top, "var(--g3d-ghost)")
+          : rct(fp.body, "var(--g3d-ghost)") + ell(fp.capE, "var(--g3d-ghost)")) + "</g>"
+      : "";
+
+    // o fundo do tubo visto através do fluido (cilindro, high+)
+    const floor = (!g.box && q >= 2)
+      ? ell(p.footE, "var(--g3d-f-floor" + i + ")", ' opacity="0.55"')
+      : "";
+
+    // ── verniz e brilho: passam POR CIMA do fluido, sem lavar o centro ────
+    let varnish = "";
+    if (q >= 1 && c.glass !== false) {
+      varnish = g.box
+        ? poly(p.front, "url(#" + uid + "-varnish)")
+        : rct(p.body, "url(#" + uid + "-varnish)");
+      const sw = Math.max(3, g.T * 0.12);
+      varnish += g.vert
+        ? '<rect x="' + n2(g.x0 + g.T * 0.17) + '" y="' + n2(g.yBase - g.L + 5) + '" width="' +
+          n2(sw) + '" height="' + n2(g.L - 10) + '" rx="' + n2(sw / 2) + '" fill="url(#' +
+          uid + '-spec)"/>'
+        : '<rect x="' + n2(g.x0 + 5) + '" y="' + n2(g.yBase - g.T + g.T * 0.17) + '" width="' +
+          n2(g.L - 10) + '" height="' + n2(sw) + '" rx="' + n2(sw / 2) + '" fill="url(#' +
+          uid + '-spec)"/>';
+      // segundo brilho, fino, do lado oposto — o vidro da referência tem dois
+      if (q >= 3) {
+        const sw2 = Math.max(1.6, g.T * 0.05);
+        varnish += g.vert
+          ? '<rect x="' + n2(g.x0 + g.T * 0.80) + '" y="' + n2(g.yBase - g.L + 10) + '" width="' +
+            n2(sw2) + '" height="' + n2(g.L - 20) + '" rx="' + n2(sw2 / 2) +
+            '" fill="var(--g3d-spec2)"/>'
+          : '<rect x="' + n2(g.x0 + 10) + '" y="' + n2(g.yBase - g.T + g.T * 0.80) + '" width="' +
+            n2(g.L - 20) + '" height="' + n2(sw2) + '" rx="' + n2(sw2 / 2) +
+            '" fill="var(--g3d-spec2)"/>';
+      }
+    }
+    const outline = g.box
+      ? '<polygon points="' + p.sil + '" fill="none" stroke="var(--g3d-edge)" stroke-width="1"/>'
+      : '<path d="' + p.sil + '" fill="none" stroke="var(--g3d-edge)" stroke-width="1"/>' +
+        '<ellipse cx="' + n2(p.capE.cx) + '" cy="' + n2(p.capE.cy) + '" rx="' + n2(p.capE.rx) +
+        '" ry="' + n2(p.capE.ry) + '" fill="var(--g3d-p-mouth)" stroke="var(--g3d-edge)" stroke-width="1"/>';
+
+    // ── tampa ────────────────────────────────────────────────────────────
+    let cap = "";
+    if (c.cap && g.capH > 0) {
+      const ch = g.capH + (g.box ? 0 : g.dy);
+      if (g.box) {
+        const cp = boxParts(g.x0 - 1.5, g.yBase - g.h + (g.vert ? ch : 0), g.vert ? g.w + 3 : ch,
+          g.vert ? ch : g.h + 3, g.dx, g.dy);
+        cap = poly(cp.side, "var(--g3d-cap-side)") + poly(cp.top, "var(--g3d-cap-top)") +
+          poly(cp.front, "var(--g3d-cap)");
+      } else {
+        const cx0 = g.vert ? g.x0 - 1.5 : g.x0 + g.w - ch;
+        const cyB = g.vert ? g.yBase - g.h + ch : g.yBase;
+        const cp = cylParts(cx0, cyB, g.vert ? g.w + 3 : ch, g.vert ? ch : g.h + 3, g.dy, g.vert);
+        cap = '<path d="' + cp.sil + '" fill="var(--g3d-cap)"/>' +
+          ell(cp.capE, "var(--g3d-cap-top)");
+      }
+      // a tampa projeta sombra no tubo
+      if (q >= 3) {
+        cap += g.vert
+          ? '<rect x="' + n2(g.x0) + '" y="' + n2(g.yBase - g.h + g.capH) + '" width="' + n2(g.T) +
+            '" height="4" fill="url(#' + uid + '-wall)" opacity="0.62"/>'
+          : '<rect x="' + n2(g.x0 + g.w - g.capH - 7) + '" y="' + n2(g.yBase - g.T) +
+            '" width="4" height="' + n2(g.T) + '" fill="url(#' + uid + '-wall)" opacity="0.62"/>';
+      }
+    }
+
+    return '<g class="g3d-tube" transform="translate(' + n2(ox) + "," + n2(oy) + ')">' +
+      body +
+      '<g clip-path="url(#' + uid + '-clip)"' + seg + ">" + floor + ghost +
+      '<g class="g3d-fill" data-i="' + i + '" opacity="' + n2(fop) + '">' + wall + fluid +
+      "</g></g>" +
+      '<g class="g3d-glass">' + varnish + outline + "</g>" + cap + "</g>";
+  };
+
+  // A cena inteira: chão, pedestal, um ou dois tubos, régua, zonas e o valor.
+  const svgFor = (c, g, uid, rng) => {
+    const q = qOf(c);
+    const parts = [];
+    const cx = g.vert ? g.x0 + (g.T + g.dx) / 2 : g.x0 + (g.L + g.dx) / 2;
+    const cyTube = g.yBase - g.T / 2;
+    const twinOff = g.twin && g.vert ? g.T + 10 : 0;
+    const twinOffY = g.twin && !g.vert ? g.T + 10 : 0;
+    const spanW = g.vert ? g.T + g.dx + twinOff : g.L + g.dx;
+
+    parts.push(defsFor(c, g, uid, q));
+
+    // chão: difusa deslocada, mais o contato duro sob a base
+    if (c.ground_shadow && q >= 1) {
+      parts.push('<ellipse cx="' + n2(cx + spanW * 0.06) + '" cy="' + n2(g.yBase + g.plate + 4) +
+        '" rx="' + n2(spanW * 0.66) + '" ry="5.8" fill="url(#' + uid + '-ground)"/>');
+      if (q >= 2) {
+        parts.push('<ellipse cx="' + n2(cx) + '" cy="' + n2(g.yBase + g.plate + 1.5) + '" rx="' +
+          n2(spanW * 0.46) + '" ry="2.6" fill="url(#' + uid + '-contact)"/>');
+      }
+    }
+    // cáustica: a luz que atravessa o fluido e pousa no chão
+    if (c.ground_shadow && q >= 3) {
+      parts.push('<ellipse class="g3d-caustic" cx="' + n2(cx) + '" cy="' +
+        n2(g.yBase + g.plate + 3) + '" rx="' + n2(spanW * 0.34) + '" ry="3.4" fill="url(#' +
+        uid + '-caustic)"/>');
+    }
+
+    // pedestal: prisma de 3 faces no high+, faixa chapada abaixo disso
     if (c.base_plate) {
-      const pw = g.vert ? g.T + g.dx + 10 + twinOff : g.L + g.dx + 6;
-      const px = g.vert ? g.x0 - 5 : g.x0 - 3;
-      parts.push('<rect x="' + n2(px) + '" y="' + n2(g.yBase + 1) + '" width="' + n2(pw) +
-        '" height="' + n2(g.plate - 2) + '" rx="2.5" fill="var(--g3d-plate)"/>');
+      const pw = (g.vert ? g.T + 16 + twinOff : g.L + 8);
+      const px = g.vert ? g.x0 - 8 : g.x0 - 4;
+      if (q >= 2) {
+        const pp = boxParts(px, g.yBase + g.plate - 1, pw, g.plate - 2, g.dx * 0.8, g.dy * 0.8);
+        parts.push('<polygon points="' + pp.side + '" fill="var(--g3d-plate-side)"/>' +
+          '<polygon points="' + pp.top + '" fill="var(--g3d-plate-top)"/>' +
+          '<polygon points="' + pp.front + '" fill="var(--g3d-plate)"/>');
+      } else {
+        parts.push('<rect x="' + n2(px) + '" y="' + n2(g.yBase + 1) + '" width="' + n2(pw) +
+          '" height="' + n2(g.plate - 2) + '" rx="2.5" fill="var(--g3d-plate)"/>');
+      }
     }
 
-    parts.push(tubeMarkup(c, g, uid, 0, 0, 0));
-    if (g.twin) parts.push(tubeMarkup(c, g, uid, 1, twinOff, twinOffY));
+    parts.push(tubeMarkup(c, g, uid, 0, 0, 0, q));
+    if (g.twin) parts.push(tubeMarkup(c, g, uid, 1, twinOff, twinOffY, q));
 
     // zonas: uma fita fina colada ao tubo, do lado oposto à régua
     if (c.zones && c.zones.length && rng) {
@@ -1134,13 +1302,14 @@
         z += g.vert
           ? '<rect x="' + n2(zPos) + '" y="' + n2(g.yBase - u1) + '" width="' + zw + '" height="' +
             n2(u1 - u0) + '" rx="2" fill="' + esc(col) + '"/>'
-          : '<rect x="' + n2(g.x0 + u0) + '" y="' + n2(zPos) + '" width="' + n2(u1 - u0) + '" height="' +
-            zw + '" rx="2" fill="' + esc(col) + '"/>';
+          : '<rect x="' + n2(g.x0 + u0) + '" y="' + n2(zPos) + '" width="' + n2(u1 - u0) +
+            '" height="' + zw + '" rx="2" fill="' + esc(col) + '"/>';
         if (c.zone_labels && zone.label) {
           const um = (u0 + u1) / 2;
           z += g.vert
-            ? '<text class="g3d-zl" x="' + n2(zPos + (g.side ? -4 : zw + 4)) + '" y="' + n2(g.yBase - um + 3) +
-              '" text-anchor="' + (g.side ? "end" : "start") + '">' + esc(zone.label) + "</text>"
+            ? '<text class="g3d-zl" x="' + n2(zPos + (g.side ? -4 : zw + 4)) + '" y="' +
+              n2(g.yBase - um + 3) + '" text-anchor="' + (g.side ? "end" : "start") + '">' +
+              esc(zone.label) + "</text>"
             : '<text class="g3d-zl" x="' + n2(g.x0 + um) + '" y="' +
               n2(zPos + (g.side ? -4 : zw + 11)) + '" text-anchor="middle">' + esc(zone.label) + "</text>";
         }
@@ -1201,7 +1370,8 @@
       if (g.vert) {
         const hasLabel = !!c.label;
         parts.push('<text class="g3d-val" x="' + n2(g.x0 + g.T / 2) + '" y="' +
-          n2(g.yBase - (hasLabel ? 24 : 12)) + '" text-anchor="middle" style="font-size:' + n2(fs) + 'px"></text>');
+          n2(g.yBase - (hasLabel ? 24 : 12)) + '" text-anchor="middle" style="font-size:' +
+          n2(fs) + 'px"></text>');
         if (hasLabel) {
           parts.push('<text class="g3d-lbl" x="' + n2(g.x0 + g.T / 2) + '" y="' + n2(g.yBase - 10) +
             '" text-anchor="middle">' + esc(c.label) + "</text>");
@@ -1219,7 +1389,8 @@
         '<ha-icon icon="' + esc(c.icon) + '"></ha-icon></foreignObject></g>');
     }
 
-    return '<svg class="g3d-svg" viewBox="0 0 ' + n2(g.W) + " " + n2(g.H) +
+    return '<svg class="g3d-svg" data-q="' + (["low", "medium", "high", "ultra"][q]) +
+      '" viewBox="0 0 ' + n2(g.W) + " " + n2(g.H) +
       '" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img">' +
       parts.join("") + "</svg>";
   };
@@ -1245,6 +1416,8 @@
 .g3d-fill{transition:transform .55s cubic-bezier(.4,0,.2,1)}
 .g3d-ghost{transition:transform .55s cubic-bezier(.4,0,.2,1)}
 .g3d-mark{transition:transform .55s cubic-bezier(.4,0,.2,1);fill:var(--g3d-accent)}
+.g3d-rim{stroke-width:1.1;stroke-linecap:round;fill:none}
+.g3d-caustic{transition:opacity .4s}
 .g3d-tk{stroke:var(--g3d-rule);stroke-width:1.4;stroke-linecap:round}
 .g3d-tkm{stroke:var(--g3d-rule);stroke-width:1;opacity:.6;stroke-linecap:round}
 .g3d-tl{font-size:9.5px;fill:var(--g3d-ink);opacity:.72;font-weight:500}
@@ -1401,6 +1574,9 @@
         (dark ? ",inset 1px 1px 3px rgba(255,255,255,0.06),inset -1px -1px 3px rgba(0,0,0,0.30)"
           : ",inset 2px 2px 4px rgba(255,250,235,0.75),inset -2px -2px 4px rgba(0,0,0,0.07)");
       const glassOn = c.glass !== false;
+      const numOr = (v, d) => (v == null || v === "" || !Number.isFinite(Number(v)) ? d : Number(v));
+      const spec = Math.max(0, Math.min(1, numOr(c.specular, 0.55)));
+      const fdepth = Math.max(0, Math.min(0.8, numOr(c.fluid_depth, 0.30)));
 
       const vars = {
         "--g3d-paper": dark ? paperDarkGradient(c.paper) : paperGradient(c.paper),
@@ -1409,20 +1585,33 @@
         "--g3d-relief": relief,
         "--g3d-edge": dark ? "rgba(255,255,255,.16)" : "rgba(0,0,0,.20)",
         "--g3d-rule": dark ? "rgba(255,255,255,.34)" : "rgba(0,0,0,.34)",
+        // corpo em papel: a luz entra por uma borda e morre na oposta
+        "--g3d-b0": shade(pl, dark ? 0.20 : 0.16, 1),
+        "--g3d-b1": pl,
+        "--g3d-b2": shade(pd, dark ? 0.02 : -0.03, 1),
+        "--g3d-b3": shade(pd, dark ? -0.14 : -0.21, 1),
+        "--g3d-s0c": shade(pd, dark ? -0.06 : -0.15, 1),
+        "--g3d-s1c": shade(pd, dark ? -0.20 : -0.34, 1),
         "--g3d-p-in": shade(pd, dark ? 0.06 : -0.04, 1),
         "--g3d-p-side": shade(pd, dark ? -0.10 : -0.16, 1),
-        "--g3d-p-top": shade(pl, dark ? 0.18 : 0.10, 1),
+        "--g3d-p-top": shade(pl, dark ? 0.22 : 0.16, 1),
         "--g3d-p-mouth": shade(pd, dark ? -0.14 : -0.20, 1),
         "--g3d-plate": shade(pl, dark ? 0.04 : -0.02, 1),
+        "--g3d-plate-top": shade(pl, dark ? 0.24 : 0.18, 1),
+        "--g3d-plate-side": shade(pd, dark ? -0.12 : -0.20, 1),
         "--g3d-cap": shade(pl, dark ? 0.10 : 0.04, 1),
-        "--g3d-cap-top": shade(pl, dark ? 0.24 : 0.16, 1),
+        "--g3d-cap-top": shade(pl, dark ? 0.28 : 0.20, 1),
         "--g3d-cap-side": shade(pd, dark ? -0.06 : -0.12, 1),
-        "--g3d-g0": glassOn ? shade(pd, -0.14, dark ? 0.52 : 0.46) : "transparent",
-        "--g3d-g1": glassOn ? shade(pl, 0.40, dark ? 0.16 : 0.20) : "transparent",
-        "--g3d-g2": glassOn ? shade(pd, -0.22, dark ? 0.60 : 0.54) : "transparent",
-        "--g3d-g-side": glassOn ? shade(pd, -0.18, 0.42) : "transparent",
-        "--g3d-g-top": glassOn ? shade(pl, 0.30, 0.34) : "transparent",
-        "--g3d-spec": dark ? "rgba(255,255,255,.14)" : "rgba(255,255,255,.55)",
+        // verniz de BORDAS: escuro nas margens, nada no meio — não lava a cor
+        "--g3d-v-edge": glassOn ? shade(pd, -0.55, dark ? 0.46 : 0.36) : "transparent",
+        "--g3d-v-mid": glassOn ? shade(pd, -0.42, dark ? 0.20 : 0.14) : "transparent",
+        "--g3d-v-edge2": glassOn ? shade(pd, -0.62, dark ? 0.52 : 0.42) : "transparent",
+        "--g3d-spec": glassOn ? "rgba(255,255,255," + n2(spec * (dark ? 0.34 : 1)) + ")" : "transparent",
+        "--g3d-spec2": glassOn ? "rgba(255,255,255," + n2(spec * (dark ? 0.16 : 0.42)) + ")" : "transparent",
+        "--g3d-ax-mid": "rgba(0,0,0," + n2(fdepth * 0.34) + ")",
+        "--g3d-ax-end": "rgba(0,0,0," + n2(fdepth) + ")",
+        "--g3d-wall-mid": dark ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.12)",
+        "--g3d-wall-end": dark ? "rgba(0,0,0,0.42)" : "rgba(0,0,0,0.36)",
         "--g3d-ghost": dark ? "rgba(255,255,255,.16)" : "rgba(0,0,0,.14)",
         "--g3d-valhalo": pl,
         "--g3d-valc": "var(--g3d-ink)",
@@ -1461,6 +1650,9 @@
         s0: Array.from(this.shadowRoot.querySelectorAll(".g3d-s0")),
         s1: Array.from(this.shadowRoot.querySelectorAll(".g3d-s1")),
         s2: Array.from(this.shadowRoot.querySelectorAll(".g3d-s2")),
+        m0: Array.from(this.shadowRoot.querySelectorAll(".g3d-m0")),
+        m1: Array.from(this.shadowRoot.querySelectorAll(".g3d-m1")),
+        rims: Array.from(this.shadowRoot.querySelectorAll(".g3d-rim")),
         svgVal: this.shadowRoot.querySelector(".g3d-val"),
         v: this.shadowRoot.querySelector(".ft .v"),
         u: this.shadowRoot.querySelector(".ft .u"),
@@ -1519,6 +1711,7 @@
         set("--g3d-f-side" + i, shade(b, -0.24, 1));
         set("--g3d-f-top" + i, shade(b, 0.28, 1));
         set("--g3d-f-meniscus" + i, shade(b, 0.48, 0.8));
+        set("--g3d-f-floor" + i, shade(b, -0.58, 1));
       }
       const stop = (arr, k, a) => arr.forEach((s) => {
         const i = Number(s.dataset.i) || 0;
@@ -1526,6 +1719,14 @@
         s.setAttribute("stop-color", shade(b, k, a));
       });
       stop(el.s0, -0.20, 1); stop(el.s1, 0.32, 1); stop(el.s2, -0.30, 1);
+      // menisco: centro iluminado, anel de borda na cor cheia
+      stop(el.m0, 0.64, 1); stop(el.m1, -0.04, 1);
+      el.rims.forEach((r) => {
+        const i = Number(r.dataset.i) || 0;
+        const b = i === 1 && r2 ? fillColor(c, v2, this._kind, unit, frac2) : base;
+        r.setAttribute("stroke", shade(b, 0.66, 0.9));
+      });
+      set("--g3d-caustic", shade(base, 0.30, 0.24));
       const valc = v == null ? "var(--g3d-ink)" : inkOf(base, c.paper_dark === true);
       set("--g3d-valc", valc);
 
@@ -1649,7 +1850,15 @@
           mk("orientation", sel(OPT.orientation)), mk("shape", sel(OPT.shape)),
           mk("depth", sel(OPT.depth)), mk("thickness", num(18, 140, 1)),
           mk("length", num(60, 460, 2)), mk("iso", num(0, 40, 1)),
-          mk("glass", bool), mk("cap", bool), mk("base_plate", bool), mk("ground_shadow", bool)];
+          mk("glass", bool), mk("cap", bool), mk("base_plate", bool), mk("ground_shadow", bool),
+          mk("quality", sel(OPT.quality)), mk("specular", num(0, 1, 0.05))];
+        case "fluido": {
+          const f = [mk("fill_style", sel(OPT.fill_style))];
+          if (c.fill_style === "segments") f.push(mk("segments", num(3, 40, 1)));
+          f.push(mk("fluid_opacity", num(0.3, 1, 0.02)), mk("fluid_depth", num(0, 0.8, 0.02)),
+            mk("icon_in_fill", bool));
+          return f;
+        }
         case "papel": return [
           mk("paper_dark", bool),
           mk("paper", sel(c.paper_dark === true ? paperDarkOptions() : paperOptions()))];
@@ -1660,9 +1869,6 @@
             s.push(mk("stop_1", num(-1000, 100000, 0.1)), mk("stop_2", num(-1000, 100000, 0.1)),
               mk("stop_3", num(-1000, 100000, 0.1)), mk("stop_4", num(-1000, 100000, 0.1)));
           }
-          s.push(mk("fill_style", sel(OPT.fill_style)));
-          if (c.fill_style === "segments") s.push(mk("segments", num(3, 40, 1)));
-          s.push(mk("icon_in_fill", bool));
           return s;
         }
         case "regua": {

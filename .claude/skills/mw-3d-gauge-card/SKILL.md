@@ -27,6 +27,28 @@ deslocado por `transform`. Mudar o nível = mudar **um** `transform`.
 - `_build()` monta uma vez; `_paint()` só escreve variáveis CSS, `stop-color` e o
   `transform`. `setConfig` separa **forma** (remonta) de **estado** (repinta).
 
+## Ordem das camadas (mexer aqui quebra o realismo)
+
+```
+sombra de chão · sombra dura de contato · cáustica (ultra)
+pedestal (prisma no high+)
+corpo do tubo em papel (lateral → topo → frontal)
+┌ clip = silhueta ──────────────────────────────────────┐
+│  fundo do tubo visto através do fluido (cilindro)      │
+│  grupo .g3d-fill (transladado, opacity = fluid_opacity)│
+│    sombra do fluido na PAREDE  ← acima da superfície   │
+│    fluido lateral · frontal (-f) · eixo (-ax)          │
+│    face de topo · menisco (-men) · aresta de luz       │
+└────────────────────────────────────────────────────────┘
+verniz de BORDAS (-varnish)  ← transparente no miolo
+brilho (-spec, --g3d-spec2)  ← passa por cima do fluido
+contorno · tampa · sombra sob a tampa
+```
+
+**Regra dura: gradiente, nunca filtro.** `<filter>`/`feGaussianBlur` rasteriza a
+subárvore a cada repaint e derruba a rolagem no celular. Sombra suave se faz com
+paradas de gradiente.
+
 ## Armadilhas com sintoma observável
 
 | sintoma | causa | conserto |
@@ -38,12 +60,15 @@ deslocado por `transform`. Mudar o nível = mudar **um** `transform`.
 | o líquido sobe por dentro da tampa | curso = tubo inteiro | `run = L - capH` quando `cap` |
 | os segmentos andam junto com o líquido | máscara no grupo transformado | máscara no grupo do `clip-path`, não no `.g3d-fill` |
 | `stop-color` não muda | variável CSS em `<stop>` não é confiável | `setAttribute("stop-color", …)` no `_paint()` |
+| o fluido nasce invisível | `fluid_opacity: null` → `Number(null)` é `0` | testar `== null` antes de `Number()` |
+| a cor sai lavada | verniz cobrindo o miolo, não só as bordas | `-varnish` com `transparent` em 24 % e 76 % |
+| o fluido parece colado por cima | falta a sombra dele na parede | `-wall` dentro do grupo transladado |
 
 ## Verificação
 
 ```bash
 node --check dist/mw-3d-gauge-card.js
-node tools/probe.js          # esperado: ✓ 105 provas passaram
+node tools/probe.js          # esperado: ✓ 138 provas passaram
 ```
 
 Bancada visual: `tools/preview.html` — **não abre por `file://`**. Sirva por HTTP
@@ -62,7 +87,11 @@ curl -s -H 'Accept-Encoding: gzip' http://192.168.1.71:8123/hacsfiles/$R/$C.js |
 **Mandar só o `.js` não basta**: o servidor entrega o `.js.gz` quando ele existe —
 sintoma é `curl` mostrar o novo e a tela continuar velha. Depois, ⌘⇧R.
 
-A vitrine fica em `ha-dashboards/scripts/mw_components/gerar.py`, função `v_gauges()`.
+A vitrine fica em `ha-dashboards/scripts/mw_components/gerar.py`, função `v_gauges()`
+— inclusive as três seções RECEITA (card + YAML lado a lado) e a de QUALIDADE.
+
+Auditoria visual: o agente `inspetor-de-3d-e-css` (`IA/agents/`) mede as nove camadas,
+os nós por tier e a saturação do fluido.
 
 ## DevOps
 `develop` (padrão) → PR → `main` → auto-release (bump pelo assunto do commit,

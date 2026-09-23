@@ -27,6 +27,40 @@ se move é um `transform`.
 
 ---
 
+## Realismo calibrado — `quality`
+
+Todo o volume sai de **gradiente**, nunca de `<filter>`: filtro rasteriza a subárvore a
+cada repaint e é o que derruba a rolagem no celular. Por isso o preço de um nível é só
+**número de nós parados**, medido na bancada:
+
+| nível | o que acrescenta | nós de desenho |
+|---|---|---|
+| `low` | faces chapadas, sem brilho e sem sombra de chão | 20–23 |
+| `medium` | brilho especular, menisco, sombra de chão | 23–27 |
+| `high` | **sombra do fluido na parede**, aresta de luz, fluido em 2 eixos, fundo do tubo, pedestal em prisma | 29–33 |
+| `ultra` | 2º brilho, cáustica no chão, sombra sob a tampa | 31–36 |
+
+`quality: auto` (padrão) resolve **`ultra` no desktop**, **`high` no celular**
+(`pointer: coarse` ou largura < 500 px) e **`medium`** com `prefers-reduced-motion`.
+Do mais pobre ao mais rico são ~13 nós: o realismo aqui é barato.
+
+### As nove camadas do volume
+
+| # | camada | onde |
+|---|---|---|
+| 1 | sombra de contato difusa, deslocada | chão |
+| 2 | sombra dura sob a base | chão |
+| 3 | três faces do corpo com luminância distinta | corpo |
+| 4 | gradiente transversal no corpo | corpo |
+| 5 | **sombra que o fluido projeta na parede interna** | dentro do tubo |
+| 6 | gradiente do fluido ao longo do eixo | fluido |
+| 7 | face de topo própria — losango ou elipse com menisco | fluido |
+| 8 | aresta de luz na quina | fluido |
+| 9 | brilho especular **por cima** do fluido | verniz |
+
+O verniz do vidro é **de bordas** — escuro nas margens, transparente no miolo. É o que
+deixa a cor do fluido cheia em vez de lavada.
+
 ## Como funciona o desenho
 
 O líquido **não muda de tamanho**: é um prisma (ou cilindro) do tamanho do curso
@@ -296,7 +330,11 @@ hold_action:
 | `thickness` | `46` | espessura do tubo |
 | `length` | `220` | comprimento do tubo |
 | `iso` | `18` | profundidade 3D (raio da elipse ou deslocamento isométrico) |
-| `glass` | `true` | corpo translúcido com reflexo |
+| `glass` | `true` | verniz de bordas e brilho especular |
+| `quality` | `auto` | `auto` \| `low` \| `medium` \| `high` \| `ultra` |
+| `specular` | `0.55` | intensidade do brilho |
+| `fluid_opacity` | `1` no box, `0.94` no cilindro | translucidez do fluido |
+| `fluid_depth` | `0.30` | escurecimento do fluido em direção à base |
 | `cap` | `true` | tampa na ponta — encurta o curso do líquido |
 | `base_plate` | `true` | placa de base |
 | `ground_shadow` | `true` | sombra de contato no chão |
@@ -340,7 +378,7 @@ categoria **Dashboard**. Depois instale e recarregue a página com ⌘⇧R.
 
 ```bash
 node --check dist/mw-3d-gauge-card.js    # sintaxe
-node tools/probe.js                      # 102 provas headless
+node tools/probe.js                      # 138 provas headless
 ```
 
 A bancada visual é `tools/preview.html` — **não abre por `file://`**, precisa de HTTP
@@ -357,6 +395,10 @@ editam aqui.
 - `min`/`max` ausentes **não** podem virar zero (`Number(null)` é `0`).
 - `toRGB` precisa entender `hsl()` — o papel canônico é declarado assim.
 - A tampa encurta o curso: sem isso o líquido sobe por dentro dela.
+- **Nenhum `<filter>` em lugar nenhum** — o realismo é só gradiente.
+- O verniz precisa ser transparente no miolo, senão desbota o fluido.
+- `Number(null)` é `0`: chave numérica opcional nunca é lida crua (já fez o fluido
+  nascer invisível uma vez).
 - O editor não grava default nenhum no YAML.
 
 ---

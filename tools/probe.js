@@ -151,8 +151,12 @@ const mk = (cfg) => { const el = new Card(); el.setConfig(cfg); el.hass = HASS; 
 const html = (el) => String(el.shadowRoot.innerHTML || "");
 const svg = (cfg) => {
   const c = Object.assign({}, API.DEFAULTS, cfg);
+  if (!("quality" in (cfg || {}))) c.quality = "ultra";   // a bancada mede o teto
   return API.svgFor(c, API.geometry(c), "t", [0, 100]);
 };
+// nós DE DESENHO: os <defs> não pintam nada, são receita de gradiente.
+const nodes = (m) => (String(m).replace(/<defs>[^]*?<\/defs>/g, "")
+  .match(/<(rect|polygon|ellipse|path|line|text|circle|g|foreignObject)\b/g) || []).length;
 
 /* 1. registro, banner e cartão de visita do HACS */
 ok(!!Card, "mw-3d-gauge-card não foi registrado");
@@ -311,6 +315,60 @@ ok(API.lum(API.inkOf("#2b3a8f", true)) > API.lum("#2b3a8f"),
 ok(API.inkOf("#e35d5d", false) === "#e35d5d",
   "cor que já contrasta não deveria ser mexida");
 
+/* 17d. Number(null) é 0: as chaves numéricas opcionais não podem nascer zeradas */
+ok(/opacity="(0\.9[0-9]|1)"/.test(svg({ shape: "cylinder" })),
+  "fluido do cilindro nasceu invisível (fluid_opacity null virou 0)");
+ok(/opacity="1"/.test(svg({ shape: "box" })), "fluido do box deveria ser opaco");
+const semSpec = mk({ entity: "sensor.temp" });
+ok((semSpec._el.root.style._p["--g3d-spec"] || "").indexOf("0)") === -1,
+  "specular null virou 0 e apagou o brilho");
+
+/* 17e. os quatro níveis de realismo: cada um liga camadas e custa nós */
+const corpo = (q) => svg({ quality: q, ticks: "none", show_value: false, icon_in_fill: false });
+const TETO = { low: 24, medium: 30, high: 36, ultra: 42 };
+let ant = 0;
+["low", "medium", "high", "ultra"].forEach((q) => {
+  const n = nodes(corpo(q));
+  ok(n <= TETO[q], `${q} passou do teto de nós: ${n} > ${TETO[q]}`);
+  ok(n >= ant, `${q} deveria ter pelo menos tantos nós quanto o tier abaixo (${n} < ${ant})`);
+  ant = n;
+});
+ok(nodes(corpo("ultra")) > nodes(corpo("low")) + 6,
+  "ultra e low estão desenhando quase a mesma coisa — os tiers não estão ligando camada");
+
+// as camadas que cada tier promete
+hasnt(corpo("low"), "-spec)", "low não deveria ter brilho especular");
+hasnt(corpo("low"), "-ground)", "low não deveria ter sombra de chão");
+has(corpo("medium"), "-spec)", "medium precisa do brilho");
+has(corpo("medium"), "-ground)", "medium precisa da sombra de chão");
+hasnt(corpo("medium"), "-wall)", "a sombra na parede é do high para cima");
+has(corpo("high"), "-wall)", "high precisa da sombra do fluido na parede");
+has(corpo("high"), "-ax)", "high precisa do fluido em dois eixos");
+has(corpo("high"), "-contact)", "high precisa da sombra de contato");
+hasnt(corpo("high"), "-caustic)", "a cáustica é do ultra");
+has(corpo("ultra"), "-caustic)", "ultra precisa da cáustica no chão");
+has(corpo("ultra"), "--g3d-spec2", "ultra precisa do segundo brilho");
+
+/* 17f. o verniz é de BORDAS: sem isto ele lava a cor do fluido (o erro da v0.1) */
+const vern = corpo("ultra");
+has(vern, "-varnish", "faltou o verniz");
+const stops = (API.svgFor(Object.assign({}, API.DEFAULTS, { quality: "ultra" }),
+  API.geometry(Object.assign({}, API.DEFAULTS, { quality: "ultra" })), "t", [0, 100])
+  .match(/id="t-varnish"[^]*?<\/linearGradient>/) || [""])[0];
+ok((stops.match(/transparent/g) || []).length >= 2,
+  "o verniz precisa ser transparente no miolo, senão desbota o fluido");
+
+/* 17g. nenhum tier usa <filter>: filtro rasteriza a subárvore a cada repaint */
+["low", "medium", "high", "ultra"].forEach((q) =>
+  hasnt(corpo(q), "<filter", `${q} está usando filtro SVG — proibido, mata a rolagem no celular`));
+hasnt(CODE, "feGaussianBlur", "o card não deveria ter blur de SVG em lugar nenhum");
+
+/* 17h. auto resolve para um tier válido mesmo sem matchMedia */
+const autoCfg = Object.assign({}, API.DEFAULTS, { quality: "auto" });
+ok(["low", "medium", "high", "ultra"].indexOf(
+  (API.svgFor(autoCfg, API.geometry(autoCfg), "t", [0, 100]).match(/data-q="(\w+)"/) || [])[1]) > -1,
+  "quality:auto não resolveu para um tier válido");
+
 /* 18. relevo de papel é sombra parada: nada de animar propriedade cara */
 const css = CODE.slice(CODE.indexOf("const CSS = `"), CODE.indexOf("`;", CODE.indexOf("const CSS = `")));
 hasnt(css, "@keyframes", "o card não deveria ter @keyframes");
@@ -329,8 +387,8 @@ ok(!("thickness" in out) && !("ticks" in out) && !("orientation" in out),
   "o editor está gravando defaults no YAML: " + JSON.stringify(out));
 ed._config = Object.assign({}, ed._config, { orientation: "horizontal" });
 ok(ed._outConfig().orientation === "horizontal", "o que difere do padrão precisa ir para o YAML");
-ok(API.TABS.length === 8, "o editor deveria ter 8 abas");
-["dado", "forma", "papel", "cor", "regua", "zonas", "comparar", "acoes"].forEach((p) =>
+ok(API.TABS.length === 9, "o editor deveria ter 9 abas");
+["dado", "forma", "papel", "cor", "fluido", "regua", "zonas", "comparar", "acoes"].forEach((p) =>
   ok(ed._schemaFor(p).length > 0 || p === "zonas", "aba sem campos: " + p));
 ok(ed._schemaFor("cor").some((s) => s.name === "stop_1") === false,
   "as paradas só aparecem no modo 'paradas próprias'");
