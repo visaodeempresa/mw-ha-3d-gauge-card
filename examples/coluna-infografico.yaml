@@ -1,0 +1,16 @@
+# A coluna de infográfico: paralelepípedo isométrico, sem tampa, rótulo embaixo.
+type: custom:mw-3d-gauge-card
+entity: sensor.bateria_do_cubo
+shape: box
+orientation: vertical
+cap: false
+iso: 16
+thickness: 44
+length: 230
+value_mode: percent
+show_name: false
+ticks: none
+label: BATERIA
+icon: mdi:battery
+color_scale: single
+color: "#5b3a9e"

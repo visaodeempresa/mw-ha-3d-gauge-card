@@ -1,0 +1,12 @@
+# Umidade com régua, zonas nomeadas e a escala canônica de clima.
+type: custom:mw-3d-gauge-card
+entity: sensor.umidade_da_suite
+icon: mdi:water-percent
+ticks: both
+tick_count: 5
+tick_labels: true
+zone_labels: true
+zones:
+  - { from: 0, to: 35, color: "#e35d5d", label: seco }
+  - { from: 35, to: 65, color: "#3fb950", label: ok }
+  - { from: 65, to: 100, color: "#4f8ef7", label: úmido }

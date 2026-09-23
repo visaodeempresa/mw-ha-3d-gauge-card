@@ -1,0 +1,161 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MW 3D Gauge — bancada</title>
+<!-- Bancada local. NÃO abre por file:// (o <script src> morre): sirva por HTTP. -->
+<style>
+  body{margin:0;padding:22px;background:#e6e7ea;font:14px/1.4 -apple-system,system-ui,sans-serif;color:#222}
+  body.dark{background:#15161a;color:#eee}
+  h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.6;margin:26px 0 10px}
+  .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+  .cell{width:150px}
+  .cell.wide{width:330px}
+  .cap{font-size:10px;opacity:.55;text-align:center;margin-top:5px;text-transform:uppercase;letter-spacing:.05em}
+  .bar{position:fixed;right:14px;top:14px;z-index:9;display:flex;gap:8px}
+  button{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid #bbb;background:#fff;cursor:pointer}
+</style>
+<div class="bar">
+  <button onclick="document.body.classList.toggle('dark')">tema</button>
+  <button onclick="anima()">animar</button>
+</div>
+<div id="app"></div>
+<script>
+// ── shims mínimos do HA
+class HaCard extends HTMLElement {}
+customElements.define("ha-card", HaCard);
+class HaIcon extends HTMLElement {
+  connectedCallback(){ this.style.display="block"; this.innerHTML =
+    '<svg viewBox="0 0 24 24" width="100%" height="100%" style="display:block">'+
+    '<circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/>'+
+    '<circle cx="12" cy="12" r="2.4" fill="currentColor"/></svg>';
+    this.style.width = getComputedStyle(this).getPropertyValue("--mdc-icon-size") || "22px";
+    this.style.height = this.style.width;
+  }
+}
+customElements.define("ha-icon", HaIcon);
+
+const S = {
+  "sensor.umidade":{state:"62",attributes:{unit_of_measurement:"%",device_class:"humidity",friendly_name:"Umidade da suíte"}},
+  "sensor.temp":{state:"24.5",attributes:{unit_of_measurement:"°C",device_class:"temperature",friendly_name:"Temperatura"}},
+  "sensor.temp_fora":{state:"31.2",attributes:{unit_of_measurement:"°C",device_class:"temperature",friendly_name:"Fora"}},
+  "sensor.co2":{state:"980",attributes:{unit_of_measurement:"ppm",device_class:"carbon_dioxide",friendly_name:"CO2 do escritório"}},
+  "sensor.watts":{state:"1450",attributes:{unit_of_measurement:"W",device_class:"power",friendly_name:"Consumo"}},
+  "sensor.hpa":{state:"1012",attributes:{unit_of_measurement:"hPa",device_class:"pressure",friendly_name:"Pressão"}},
+  "sensor.bateria":{state:"38",attributes:{unit_of_measurement:"%",device_class:"battery",friendly_name:"Bateria"}},
+  "sensor.p35":{state:"35",attributes:{unit_of_measurement:"%",friendly_name:"35%"}},
+  "sensor.p25":{state:"25",attributes:{unit_of_measurement:"%",friendly_name:"25%"}},
+  "sensor.p50":{state:"50",attributes:{unit_of_measurement:"%",friendly_name:"50%"}},
+  "sensor.p65":{state:"65",attributes:{unit_of_measurement:"%",friendly_name:"65%"}},
+  "sensor.p45":{state:"45",attributes:{unit_of_measurement:"%",friendly_name:"45%"}},
+  "sensor.p90":{state:"90",attributes:{unit_of_measurement:"%",friendly_name:"90%"}},
+  "sensor.p100":{state:"100",attributes:{unit_of_measurement:"%",friendly_name:"100%"}},
+};
+const HASS = { states: S, callService(){}, themes:{} };
+const cards = [];
+function card(cfg, cap, wide){
+  const box = document.createElement("div");
+  box.className = "cell" + (wide ? " wide" : "");
+  const el = document.createElement("mw-3d-gauge-card");
+  el.setConfig(cfg); el.hass = HASS;
+  box.appendChild(el);
+  const c = document.createElement("div"); c.className="cap"; c.textContent=cap; box.appendChild(c);
+  cards.push(el);
+  return box;
+}
+function sec(title, list, wide){
+  const h = document.createElement("h2"); h.textContent = title;
+  const r = document.createElement("div"); r.className="row";
+  list.forEach(([cfg,cap]) => r.appendChild(card(cfg,cap,wide)));
+  app.append(h, r);
+}
+function anima(){
+  Object.keys(S).forEach(k => {
+    const a = S[k].attributes;
+    if (a.device_class === "temperature") S[k] = {...S[k], state: (15+Math.random()*20).toFixed(1)};
+    else if (a.unit_of_measurement === "ppm") S[k] = {...S[k], state: (450+Math.random()*1400).toFixed(0)};
+    else if (a.unit_of_measurement === "W") S[k] = {...S[k], state: (Math.random()*3000).toFixed(0)};
+    else if (a.unit_of_measurement === "hPa") S[k] = {...S[k], state: (985+Math.random()*50).toFixed(0)};
+    else S[k] = {...S[k], state: (Math.random()*100).toFixed(0)};
+  });
+  const h = { states: {...S}, callService(){}, themes:{} };
+  cards.forEach(c => c.hass = h);
+}
+window.addEventListener("load", () => {
+  const P = ["red-4","orange-4","violet-5","green-4","blue-4"];
+  const ICO = ["mdi:brain","mdi:lightbulb","mdi:monitor","mdi:tablet","mdi:chart-line"];
+
+  sec("Referência 1 — colunas de paralelepípedo", [25,35,65,45,100].map((v,i)=>[
+    {entity:"sensor.p"+v, shape:"box", orientation:"vertical", color_scale:"single",
+     color:["#e8833a","#c9358f","#5b3a9e","#1f9aa0","#77c043"][i], icon:ICO[i], label:"INFOGRAPHICS",
+     value_mode:"percent", show_name:false, ticks:"none", cap:false, iso:16, thickness:44, length:230,
+     paper:"paper"}, v+" %"]));
+
+  sec("Referência 2 — tubos de ensaio", [25,50,65,45,90].map((v,i)=>[
+    {entity:"sensor.p"+v, shape:"cylinder", orientation:"vertical", color_scale:"single",
+     color:["#e8833a","#c9358f","#5b3a9e","#1f9aa0","#77c043"][i], icon:ICO[i],
+     value_mode:"percent", show_name:false, ticks:"none", cap:true, iso:18, thickness:46, length:240},
+    v+" %"]));
+
+  sec("As quatro combinações", [
+    [{entity:"sensor.temp",orientation:"vertical",shape:"cylinder",icon:"mdi:thermometer"},"vertical · cilindro"],
+    [{entity:"sensor.temp",orientation:"vertical",shape:"box",icon:"mdi:thermometer"},"vertical · caixa"],
+  ]);
+  const r2 = document.createElement("div"); r2.className="row";
+  r2.appendChild(card({entity:"sensor.umidade",orientation:"horizontal",shape:"cylinder",icon:"mdi:water-percent",length:280},"horizontal · cilindro",true));
+  r2.appendChild(card({entity:"sensor.umidade",orientation:"horizontal",shape:"box",icon:"mdi:water-percent",length:280},"horizontal · caixa",true));
+  app.appendChild(r2);
+
+  sec("Relevo", ["3d","soft","flat"].map(d=>[
+    {entity:"sensor.co2",depth:d,shape:"box",icon:"mdi:molecule-co2",paper:"orange-3"},d]));
+
+  sec("Papel", ["paper","blue-3","orange-5","indigo-6","green-2"].map(p=>[
+    {entity:"sensor.umidade",paper:p,icon:"mdi:water",ticks:"major"},p]));
+
+  sec("Papel de noite", ["paper","blue-4","violet-5"].map(p=>[
+    {entity:"sensor.umidade",paper:p,paper_dark:true,icon:"mdi:water",ticks:"major"},"noite · "+p]));
+
+  sec("Escalas canônicas", [
+    [{entity:"sensor.temp",icon:"mdi:thermometer"},"clima · °C"],
+    [{entity:"sensor.umidade",icon:"mdi:water-percent"},"clima · UR"],
+    [{entity:"sensor.co2",icon:"mdi:molecule-co2"},"ar · CO₂"],
+    [{entity:"sensor.watts",icon:"mdi:flash"},"elétrica · W"],
+    [{entity:"sensor.hpa",icon:"mdi:gauge"},"pressão · hPa"],
+    [{entity:"sensor.bateria",icon:"mdi:battery"},"nível · bateria"],
+  ]);
+
+  sec("Cor própria", [
+    [{entity:"sensor.temp",color_scale:"custom",stop_1:18,stop_2:22,stop_3:26,stop_4:30},"paradas próprias"],
+    [{entity:"sensor.temp",color_scale:"single",color:"#8b5cf6"},"cor única"],
+  ]);
+
+  sec("Régua", ["none","major","minor","both"].map(t=>[
+    {entity:"sensor.umidade",ticks:t,tick_labels:true,icon:"mdi:water"},t]));
+
+  sec("Zonas e segmentos", [
+    [{entity:"sensor.umidade",zones:[{from:0,to:35,color:"#e35d5d",label:"seco"},{from:35,to:65,color:"#3fb950",label:"ok"},{from:65,to:100,color:"#4f8ef7",label:"úmido"}],zone_labels:true,ticks:"major"},"3 zonas com rótulo"],
+    [{entity:"sensor.umidade",zones:[{from:0,to:35,color:"#e35d5d"},{from:35,to:65,color:"#3fb950"},{from:65,to:100,color:"#4f8ef7"}]},"3 zonas sem rótulo"],
+    [{entity:"sensor.bateria",fill_style:"segments",segments:10,icon:"mdi:battery"},"10 segmentos"],
+    [{entity:"sensor.bateria",fill_style:"segments",segments:20,shape:"box"},"20 segmentos · caixa"],
+  ]);
+
+  sec("Comparar", [
+    [{entity:"sensor.temp",secondary_entity:"sensor.temp_fora",compare_mode:"ghost",icon:"mdi:home-thermometer"},"fantasma"],
+    [{entity:"sensor.temp",secondary_entity:"sensor.temp_fora",compare_mode:"marker",ticks:"major"},"marca na régua"],
+    [{entity:"sensor.temp",secondary_entity:"sensor.temp_fora",compare_mode:"side"},"tubo ao lado"],
+  ]);
+
+  sec("Vidro, tampa, placa", [
+    [{entity:"sensor.umidade",glass:false,icon:"mdi:water"},"sem vidro"],
+    [{entity:"sensor.umidade",cap:false,icon:"mdi:water"},"sem tampa"],
+    [{entity:"sensor.umidade",base_plate:false,ground_shadow:false},"sem chão"],
+    [{entity:"sensor.umidade",iso:0,shape:"box"},"sem profundidade"],
+  ]);
+
+  sec("Valor", [
+    [{entity:"sensor.temp",value_position:"in_body"},"no corpo"],
+    [{entity:"sensor.temp",value_position:"bottom"},"embaixo"],
+    [{entity:"sensor.temp",value_position:"top"},"em cima"],
+    [{entity:"sensor.temp",value_mode:"percent",show_min_max:true},"porcentagem + mín/máx"],
+  ]);
+});
+</script>
+<script src="../dist/mw-3d-gauge-card.js"></script>

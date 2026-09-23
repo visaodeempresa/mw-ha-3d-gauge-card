@@ -1,0 +1,14 @@
+# Barra deitada para o topo de uma seção: consumo da casa em W.
+type: custom:mw-3d-gauge-card
+entity: sensor.consumo_da_casa
+orientation: horizontal
+shape: cylinder
+length: 300
+thickness: 38
+icon: mdi:flash
+ticks: major
+tick_labels: true
+value_position: in_body
+tap_action:
+  action: navigate
+  navigation_path: /energia

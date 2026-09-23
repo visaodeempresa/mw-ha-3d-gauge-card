@@ -1,0 +1,6 @@
+{
+  "name": "MW 3D Gauge Card",
+  "filename": "mw-3d-gauge-card.js",
+  "render_readme": true,
+  "homeassistant": "2024.4.0"
+}

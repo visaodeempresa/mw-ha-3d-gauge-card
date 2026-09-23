@@ -1,0 +1,8 @@
+# Interno x externo no mesmo tubo: o fantasma é a segunda entidade.
+type: custom:mw-3d-gauge-card
+entity: sensor.temperatura_do_escritorio
+secondary_entity: sensor.temperatura_externa
+secondary_label: fora
+compare_mode: ghost
+icon: mdi:home-thermometer
+ticks: major
