@@ -192,10 +192,22 @@ ok(gv.H > gv.W, "o gauge vertical deveria ser mais alto que largo");
 ok(gh.W > gh.H, "o gauge horizontal deveria ser mais largo que alto");
 
 /* 4. a tampa encurta o curso do líquido — senão o líquido sobe por dentro dela */
-const comCap = API.geometry(Object.assign({}, API.DEFAULTS, { cap: true }));
-const semCap = API.geometry(Object.assign({}, API.DEFAULTS, { cap: false }));
+const comCap = API.geometry(Object.assign({}, API.DEFAULTS, { cap: true, label_zone: false }));
+const semCap = API.geometry(Object.assign({}, API.DEFAULTS, { cap: false, label_zone: false }));
 ok(comCap.run < comCap.L, "com tampa, o curso precisa ser menor que o tubo");
-ok(semCap.run === semCap.L, "sem tampa, o curso é o tubo inteiro");
+ok(semCap.run === semCap.L, "sem tampa e sem faixa, o curso é o tubo inteiro");
+
+/* 4b. a faixa clara do valor: o fluido não pode invadir onde o número mora */
+const comFaixa = API.geometry(Object.assign({}, API.DEFAULTS, { value_position: "in_body" }));
+const semFaixa = API.geometry(Object.assign({}, API.DEFAULTS, { label_zone: false }));
+ok(comFaixa.footZone > 20, "a faixa do valor não foi reservada");
+ok(comFaixa.run < semFaixa.run, "a faixa precisa encurtar o curso do fluido");
+ok(comFaixa.yF === comFaixa.yBase - comFaixa.footZone,
+  "o fluido deveria nascer acima da faixa, não na base do tubo");
+ok(API.geometry(Object.assign({}, API.DEFAULTS, { value_position: "bottom" })).footZone === 0,
+  "com o valor fora do corpo não há faixa a reservar");
+ok(API.geometry(Object.assign({}, API.DEFAULTS, { orientation: "horizontal" })).footZone === 0,
+  "a faixa é só do gauge em pé");
 
 /* 5. cada forma desenha o que promete */
 has(svg({ shape: "box" }), "<polygon", "paralelepípedo sem polígonos de face");
@@ -306,14 +318,25 @@ ok(fsOf(longo) <= fsOf(curto), "texto longo deveria encolher a fonte (curto=" +
   fsOf(curto) + ", longo=" + fsOf(longo) + ")");
 ok(fsOf(longo) >= 8, "a fonte do valor não pode sumir");
 
-/* 17c. o valor cede luminosidade até se ler sobre o papel */
-const claro = "#f2e14a";   // amarelo de 24 °C: ilegível em creme se for escrito cru
-ok(API.lum(API.inkOf(claro, false)) < API.lum(claro),
-  "cor clara deveria escurecer para ser lida no papel claro");
-ok(API.lum(API.inkOf("#2b3a8f", true)) > API.lum("#2b3a8f"),
-  "cor escura deveria clarear para ser lida no papel de noite");
-ok(API.inkOf("#e35d5d", false) === "#e35d5d",
-  "cor que já contrasta não deveria ser mexida");
+/* 17c. o valor não é escrito cru: cede até bater 4.5:1 contra o fundo REAL.
+   Limiar de luminância não bastava — o laranja de 25 % dava 2,6:1 no creme. */
+const CREME = "#fdfaf3", GRAFITE = "#2b2825";
+[["#e8833a", CREME], ["#1f9aa0", CREME], ["#e35d5d", CREME], ["#8b5cf6", CREME],
+ ["#f2e14a", CREME], ["#2b3a8f", GRAFITE], ["#5b3a9e", GRAFITE]].forEach(([cor, bg]) => {
+  const cr = API.contrast(API.inkOf(cor, bg), bg);
+  ok(cr >= 4.5, `${cor} sobre ${bg} ficou em ${cr.toFixed(2)}:1 — piso é 4.5:1`);
+});
+ok(API.contrast("#000", "#fff") > 20, "contrast() não está medindo WCAG");
+ok(API.inkOf("#6b2d12", CREME) === "#6b2d12", "cor que já contrasta não deveria ser mexida");
+// sobre o próprio fluido o texto também tem de se ler
+ok(API.contrast(API.inkOf("#77c043", "#77c043"), "#77c043") >= 4.5,
+  "valor sobre o fluido precisa de contraste contra o fluido, não contra o papel");
+// o papel é gradiente: o piso vale contra os dois extremos
+[["#4f8ef7", "#2b2825", "#161411"], ["#e8833a", "#fdfaf3", "#e8e3d8"]].forEach(([cor, a, b]) => {
+  const t = API.inkOf(cor, a, b);
+  ok(Math.min(API.contrast(t, a), API.contrast(t, b)) >= 4.5,
+    `${cor} não bateu 4.5:1 contra os dois extremos do papel`);
+});
 
 /* 17d. Number(null) é 0: as chaves numéricas opcionais não podem nascer zeradas */
 ok(/opacity="(0\.9[0-9]|1)"/.test(svg({ shape: "cylinder" })),
@@ -368,6 +391,22 @@ const autoCfg = Object.assign({}, API.DEFAULTS, { quality: "auto" });
 ok(["low", "medium", "high", "ultra"].indexOf(
   (API.svgFor(autoCfg, API.geometry(autoCfg), "t", [0, 100]).match(/data-q="(\w+)"/) || [])[1]) > -1,
   "quality:auto não resolveu para um tier válido");
+
+/* 17i. a tinta do papel é um objeto {text,dim,line}: usar o objeto cru
+   escrevia "[object Object]" na variável e apagava todo rótulo no tema escuro */
+const noite = html(mk({ entity: "sensor.temp", paper_dark: true }));
+hasnt(noite, "[object Object]", "variável CSS recebeu um objeto cru");
+["--g3d-ink:", "--g3d-ink-dim:", "--g3d-ink-line:"].forEach((k) => {
+  const m = noite.match(new RegExp(k.replace("-", "\\-") + "([^;\"]+)"));
+  ok(m && /rgba?\(/.test(m[1]), `${k} não saiu como cor: ${m ? m[1] : "ausente"}`);
+});
+
+/* 17j. nenhum filter de CSS dentro da subárvore que translada */
+const cssAll = CODE.slice(CODE.indexOf("const CSS = `"), CODE.indexOf("`;", CODE.indexOf("const CSS = `")));
+const animadas = (cssAll.match(/\.g3d-(ico|fill|ghost|mark|caustic)[^}]*}/g) || []).join(" ");
+ok(!/filter\s*:/.test(animadas),
+  "filter de CSS em elemento que translada — rasteriza a subárvore a cada quadro");
+ok(!/\.g3d-ico ha-icon\{[^}]*filter/.test(cssAll), "o ícone que viaja não pode ter drop-shadow");
 
 /* 18. relevo de papel é sombra parada: nada de animar propriedade cara */
 const css = CODE.slice(CODE.indexOf("const CSS = `"), CODE.indexOf("`;", CODE.indexOf("const CSS = `")));

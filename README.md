@@ -61,6 +61,17 @@ Do mais pobre ao mais rico são ~13 nós: o realismo aqui é barato.
 O verniz do vidro é **de bordas** — escuro nas margens, transparente no miolo. É o que
 deixa a cor do fluido cheia em vez de lavada.
 
+### A faixa do valor
+
+Nas duas referências o número mora no **corpo claro**, e o fluido nunca desce até lá.
+`label_zone` (padrão ligado, gauge em pé com `value_position: in_body`) reserva essa
+faixa: o curso do fluido encurta e o valor sai na cor cheia da escala, legível sem
+precisar escurecer. Desligue para o fluido usar o tubo inteiro.
+
+O valor nunca é escrito cru: `inkOf()` cede luminosidade até bater **4.5:1** contra os
+**dois extremos** do gradiente de papel (ou contra o fluido, quando cai sobre ele).
+Medido na bancada: **0 de 60 cards** abaixo do piso.
+
 ## Como funciona o desenho
 
 O líquido **não muda de tamanho**: é um prisma (ou cilindro) do tamanho do curso
@@ -361,6 +372,7 @@ hold_action:
 | `show_unit` | `true` | unidade junto do valor |
 | `show_min_max` | `false` | mín e máx no rodapé |
 | `icon_in_fill` | `true` | ícone viaja dentro do líquido |
+| `label_zone` | `true` | reserva a faixa clara do valor na base — o fluido não desce até lá |
 | `tap_action` / `hold_action` / `double_tap_action` | `more-info` | ações padrão do HA |
 
 O editor visual grava no YAML **só o que difere do padrão**.
@@ -378,7 +390,7 @@ categoria **Dashboard**. Depois instale e recarregue a página com ⌘⇧R.
 
 ```bash
 node --check dist/mw-3d-gauge-card.js    # sintaxe
-node tools/probe.js                      # 138 provas headless
+node tools/probe.js                      # 158 provas headless
 ```
 
 A bancada visual é `tools/preview.html` — **não abre por `file://`**, precisa de HTTP
@@ -399,6 +411,9 @@ editam aqui.
 - O verniz precisa ser transparente no miolo, senão desbota o fluido.
 - `Number(null)` é `0`: chave numérica opcional nunca é lida crua (já fez o fluido
   nascer invisível uma vez).
+- `paperInk()` devolve `{text, dim, line}` — usar o objeto cru escreve
+  `[object Object]` na variável e apaga todo rótulo no tema escuro.
+- Nenhum `filter` de CSS em elemento que translada (o `drop-shadow` do ícone saiu).
 - O editor não grava default nenhum no YAML.
 
 ---

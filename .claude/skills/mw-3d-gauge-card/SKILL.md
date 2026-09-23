@@ -63,12 +63,16 @@ paradas de gradiente.
 | o fluido nasce invisível | `fluid_opacity: null` → `Number(null)` é `0` | testar `== null` antes de `Number()` |
 | a cor sai lavada | verniz cobrindo o miolo, não só as bordas | `-varnish` com `transparent` em 24 % e 76 % |
 | o fluido parece colado por cima | falta a sombra dele na parede | `-wall` dentro do grupo transladado |
+| todo rótulo some no tema escuro | `paperInk()` devolve `{text,dim,line}` e o objeto cru virou `[object Object]` | `ink.text` / `ink.dim` / `ink.line` |
+| o número fica afogado na cor | o fluido desce até a base | `label_zone` reserva a faixa; o curso nasce em `g.yF`, não em `g.yBase` |
+| o valor não se lê mesmo colorido | limiar de luminância não é contraste | `inkOf()` cede até 4.5:1 contra os **dois** extremos do papel |
+| o ícone engasga ao subir | `filter: drop-shadow` no que translada | apagar — `--g3d-fico` já resolve a tinta |
 
 ## Verificação
 
 ```bash
 node --check dist/mw-3d-gauge-card.js
-node tools/probe.js          # esperado: ✓ 138 provas passaram
+node tools/probe.js          # esperado: ✓ 158 provas passaram
 ```
 
 Bancada visual: `tools/preview.html` — **não abre por `file://`**. Sirva por HTTP

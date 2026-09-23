@@ -4,7 +4,7 @@
  */
 (() => {
   "use strict";
-  const VERSION = "0.2.0";
+  const VERSION = "0.2.1";
 
   // >>> paper-palette v1 — fonte canônica: /Volumes/SSD-T1-01/CLAUDE-SSD/IA/lib/paper-palette/paper-palette.js
   // 49 papéis encardidos: 7 matizes do arco-íris × 7 tons (1 = quase branco,
@@ -688,6 +688,7 @@
     show_unit: true,
     show_min_max: false,
     icon_in_fill: true,
+    label_zone: true,
     tap_action: null,
     hold_action: null,
     double_tap_action: null,
@@ -716,6 +717,7 @@
     value_mode: "O valor mostra", value_position: "Posição do valor",
     show_unit: "Mostrar unidade", show_min_max: "Mostrar mín/máx",
     icon_in_fill: "Ícone dentro do preenchimento",
+    label_zone: "Faixa clara do valor na base",
     tap_action: "Toque", hold_action: "Toque longo", double_tap_action: "Toque duplo",
   };
 
@@ -808,12 +810,36 @@
   // Luminância relativa — decide se a cor da escala aguenta ser lida sobre o papel.
   const lum = (c) => { const o = toRGB(c); return (0.2126 * o.r + 0.7152 * o.g + 0.0722 * o.b) / 255; };
 
-  // O valor é escrito NO papel: amarelo de 24 °C sobre creme não se lê. A cor
-  // continua sendo a da escala, só cede luminosidade até virar legível.
-  const inkOf = (base, darkPaper) => {
-    const L = lum(base);
-    if (darkPaper) return L < 0.32 ? shade(base, 0.60) : base;
-    return L > 0.58 ? shade(base, -0.48) : base;
+  // Contraste WCAG entre duas cores.
+  const contrast = (a, b) => {
+    const rl = (c) => {
+      const o = toRGB(c);
+      const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      return 0.2126 * f(o.r) + 0.7152 * f(o.g) + 0.0722 * f(o.b);
+    };
+    const la = rl(a), lb = rl(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  };
+
+  // O valor é escrito EM CIMA de alguma coisa — papel quando o nível é baixo,
+  // fluido quando ele já subiu. Limiar de luminância não garante leitura: o
+  // laranja de 25 % dava 2,6:1 contra o creme. Aqui a cor cede até bater 4.5:1.
+  // O papel é um gradiente: o texto cai sobre um ponto qualquer entre o tom
+  // claro e o escuro. Por isso o piso vale contra os DOIS extremos, não contra a média.
+  const inkOf = (base, over, over2) => {
+    const bgs = [over || "#fdfaf3"].concat(over2 ? [over2] : []);
+    const worst = (c) => Math.min.apply(null, bgs.map((b) => contrast(c, b)));
+    if (worst(base) >= 4.5) return base;
+    const up = lum(bgs[bgs.length - 1]) < 0.5;   // fundo escuro pede tinta clara
+    let best = base, bestCR = worst(base);
+    for (let k = 0.08; k <= 0.96; k += 0.08) {
+      const c = shade(base, up ? k : -k);
+      const cr = worst(c);
+      if (cr > bestCR) { best = c; bestCR = cr; }
+      if (cr >= 4.5) return c;
+    }
+    // a cor não chega lá sozinha: cede para a tinta do papel
+    return bestCR >= 4.5 ? best : (up ? "rgba(247,244,236,0.96)" : "rgba(28,25,20,0.94)");
   };
 
   // A grandeza, quando o dono não disse qual é.
@@ -937,7 +963,11 @@
     const dx = box ? iso * 0.72 : 0;
     const dy = box ? iso * 0.5 : iso * 0.42;
     const capH = c.cap ? Math.max(10, T * 0.26) : 0;
-    const run = Math.max(10, L - capH);
+    // Nas duas referências o número mora no corpo CLARO, e o fluido nunca desce
+    // até lá. Sem esta faixa o valor fica afogado na cor a partir de ~12 % do curso.
+    const footZone = (vert && c.show_value !== false && c.value_position === "in_body" &&
+      c.label_zone !== false) ? Math.max(26, T * (c.label ? 0.92 : 0.72)) : 0;
+    const run = Math.max(10, L - capH - footZone);
     const hasTicks = c.ticks !== "none";
     const gutTick = hasTicks ? (c.tick_labels ? 40 : 15) : 0;
     const gutZone = (c.zones && c.zones.length) ? (c.zone_labels ? 44 : 13) : 0;
@@ -967,7 +997,9 @@
     }
     const w = vert ? T : L;
     const h = vert ? L : T;
-    return { vert, box, T, L, iso, dx, dy, capH, run, W, H, x0, yBase, w, h,
+    // yF é a base do CURSO (onde o fluido nasce); yBase é a base do TUBO.
+    const yF = vert ? yBase - footZone : yBase;
+    return { vert, box, T, L, iso, dx, dy, capH, run, footZone, yF, W, H, x0, yBase, w, h,
       pad, preT, postT, gutTick, gutZone, side, twin, plate, shadow,
       parts: box ? boxParts(x0, yBase, w, h, dx, dy) : cylParts(x0, yBase, w, h, dy, vert) };
   };
@@ -1040,8 +1072,11 @@
 
     // fluido: transversal (volume) × eixo (profundidade)
     for (let i = 0; i < (g.twin ? 2 : 1); i++) {
+      // O vão entre um tom clareado e um escurecido corta a curva de croma em
+      // sRGB e o miolo sai dessaturado. A parada da cor de origem segura o croma.
       d += lin("f" + i, T1,
-        st(0, "#000", "g3d-s0", i) + st("0.34", "#000", "g3d-s1", i) + st(1, "#000", "g3d-s2", i));
+        st(0, "#000", "g3d-s0", i) + st("0.30", "#000", "g3d-s1", i) +
+        st("0.58", "#000", "g3d-sb", i) + st(1, "#000", "g3d-s2", i));
       if (q >= 2) {
         d += '<radialGradient id="' + uid + "-men" + i + '" cx="0.40" cy="0.34" r="0.78">' +
           st(0, "#000", "g3d-m0", i) + st(1, "#000", "g3d-m1", i) + "</radialGradient>";
@@ -1098,8 +1133,8 @@
     const p = g.parts;
     const fw = g.vert ? g.w : g.run;
     const fh = g.vert ? g.run : g.h;
-    const fp = g.box ? boxParts(g.x0, g.yBase, fw, fh, g.dx, g.dy)
-      : cylParts(g.x0, g.yBase, fw, fh, g.dy, g.vert);
+    const fp = g.box ? boxParts(g.x0, g.yF, fw, fh, g.dx, g.dy)
+      : cylParts(g.x0, g.yF, fw, fh, g.dy, g.vert);
     const poly = (pts2, f, extra) => '<polygon points="' + pts2 + '" fill="' + f + '"' +
       (extra || "") + "/>";
     const ell = (o, f, extra) => '<ellipse cx="' + n2(o.cx) + '" cy="' + n2(o.cy) + '" rx="' +
@@ -1124,7 +1159,7 @@
     let wall = "";
     if (q >= 2) {
       wall = g.vert
-        ? '<rect x="' + n2(g.x0 - g.dx - 2) + '" y="' + n2(g.yBase - fh - wallH) + '" width="' +
+        ? '<rect x="' + n2(g.x0 - g.dx - 2) + '" y="' + n2(g.yF - fh - wallH) + '" width="' +
           n2(g.T + g.dx * 2 + 4) + '" height="' + n2(wallH) + '" fill="url(#' + uid + '-wall)"/>'
         : '<rect x="' + n2(g.x0 + fw) + '" y="' + n2(g.yBase - g.T - g.dy - 2) + '" width="' +
           n2(wallH) + '" height="' + n2(g.T + g.dy * 2 + 4) + '" fill="url(#' + uid + '-wall)"/>';
@@ -1139,13 +1174,13 @@
         (axis ? poly(fp.front, axis) : "");
       // aresta de luz na quina frontal/topo — é o corte de vidro da referência
       if (q >= 2) {
-        const yT = g.vert ? g.yBase - fh : g.yBase - g.h;
+        const yT = g.vert ? g.yF - fh : g.yBase - g.h;
         const xR = g.vert ? g.x0 + fw : g.x0 + fw;
         fluid += g.vert
           ? '<line class="g3d-rim" data-i="' + i + '" x1="' + n2(g.x0) + '" y1="' + n2(yT) +
             '" x2="' + n2(xR) + '" y2="' + n2(yT) + '"/>'
           : '<line class="g3d-rim" data-i="' + i + '" x1="' + n2(xR) + '" y1="' + n2(yT) +
-            '" x2="' + n2(xR) + '" y2="' + n2(g.yBase) + '"/>';
+            '" x2="' + n2(xR) + '" y2="' + n2(g.yBase) + '"/>';   // horizontal: sem faixa
       }
     } else {
       fluid = ell(fp.footE, "var(--g3d-f-side" + i + ")") +
@@ -1171,7 +1206,8 @@
 
     // o fundo do tubo visto através do fluido (cilindro, high+)
     const floor = (!g.box && q >= 2)
-      ? ell(p.footE, "var(--g3d-f-floor" + i + ")", ' opacity="0.55"')
+      ? ell({ cx: p.footE.cx, cy: g.yF, rx: p.footE.rx, ry: p.footE.ry },
+        "var(--g3d-f-floor" + i + ")", ' opacity="0.55"')
       : "";
 
     // ── verniz e brilho: passam POR CIMA do fluido, sem lavar o centro ────
@@ -1273,7 +1309,9 @@
       const pw = (g.vert ? g.T + 16 + twinOff : g.L + 8);
       const px = g.vert ? g.x0 - 8 : g.x0 - 4;
       if (q >= 2) {
-        const pp = boxParts(px, g.yBase + g.plate - 1, pw, g.plate - 2, g.dx * 0.8, g.dy * 0.8);
+        // no cilindro g.dx é 0: sem isto a face lateral do pedestal nasce degenerada
+        const pdx = (g.dx || g.dy * 1.4) * 0.8;
+        const pp = boxParts(px, g.yBase + g.plate - 1, pw, g.plate - 2, pdx, g.dy * 0.8);
         parts.push('<polygon points="' + pp.side + '" fill="var(--g3d-plate-side)"/>' +
           '<polygon points="' + pp.top + '" fill="var(--g3d-plate-top)"/>' +
           '<polygon points="' + pp.front + '" fill="var(--g3d-plate)"/>');
@@ -1300,7 +1338,7 @@
         if (u1 - u0 < 0.5) return;
         const col = zone.color || "var(--g3d-edge)";
         z += g.vert
-          ? '<rect x="' + n2(zPos) + '" y="' + n2(g.yBase - u1) + '" width="' + zw + '" height="' +
+          ? '<rect x="' + n2(zPos) + '" y="' + n2(g.yF - u1) + '" width="' + zw + '" height="' +
             n2(u1 - u0) + '" rx="2" fill="' + esc(col) + '"/>'
           : '<rect x="' + n2(g.x0 + u0) + '" y="' + n2(zPos) + '" width="' + n2(u1 - u0) +
             '" height="' + zw + '" rx="2" fill="' + esc(col) + '"/>';
@@ -1308,7 +1346,7 @@
           const um = (u0 + u1) / 2;
           z += g.vert
             ? '<text class="g3d-zl" x="' + n2(zPos + (g.side ? -4 : zw + 4)) + '" y="' +
-              n2(g.yBase - um + 3) + '" text-anchor="' + (g.side ? "end" : "start") + '">' +
+              n2(g.yF - um + 3) + '" text-anchor="' + (g.side ? "end" : "start") + '">' +
               esc(zone.label) + "</text>"
             : '<text class="g3d-zl" x="' + n2(g.x0 + um) + '" y="' +
               n2(zPos + (g.side ? -4 : zw + 11)) + '" text-anchor="middle">' + esc(zone.label) + "</text>";
@@ -1329,7 +1367,7 @@
       let t = "";
       const tick = (u, len, cls) => {
         if (g.vert) {
-          const y = g.yBase - u;
+          const y = g.yF - u;
           t += '<line class="' + cls + '" x1="' + n2(anchor) + '" y1="' + n2(y) + '" x2="' +
             n2(anchor + dir * len) + '" y2="' + n2(y) + '"/>';
         } else {
@@ -1348,7 +1386,7 @@
         if (c.tick_labels && wantMaj) {
           const val = rng[0] + (rng[1] - rng[0]) * (i / steps);
           const lx = g.vert ? anchor + dir * 13 : g.x0 + u;
-          const ly = g.vert ? g.yBase - u + 3.4 : anchor + dir * 13 + (g.side ? 8 : 0);
+          const ly = g.vert ? g.yF - u + 3.4 : anchor + dir * 13 + (g.side ? 8 : 0);
           t += '<text class="g3d-tl" x="' + n2(lx) + '" y="' + n2(ly) + '" text-anchor="' +
             (g.vert ? (g.side ? "start" : "end") : "middle") + '">' + esc(fmtNum(val, "")) + "</text>";
         }
@@ -1369,11 +1407,14 @@
       const fs = Math.max(11, g.T * (g.vert ? 0.40 : 0.36));
       if (g.vert) {
         const hasLabel = !!c.label;
-        parts.push('<text class="g3d-val" x="' + n2(g.x0 + g.T / 2) + '" y="' +
-          n2(g.yBase - (hasLabel ? 24 : 12)) + '" text-anchor="middle" style="font-size:' +
-          n2(fs) + 'px"></text>');
+        const yVal = g.footZone
+          ? g.yBase - (hasLabel ? g.footZone * 0.42 : g.footZone * 0.30)
+          : g.yBase - (hasLabel ? 24 : 12);
+        parts.push('<text class="g3d-val" x="' + n2(g.x0 + g.T / 2) + '" y="' + n2(yVal) +
+          '" text-anchor="middle" style="font-size:' + n2(fs) + 'px"></text>');
         if (hasLabel) {
-          parts.push('<text class="g3d-lbl" x="' + n2(g.x0 + g.T / 2) + '" y="' + n2(g.yBase - 10) +
+          parts.push('<text class="g3d-lbl" x="' + n2(g.x0 + g.T / 2) + '" y="' +
+            n2(g.yBase - (g.footZone ? g.footZone * 0.14 : 10)) +
             '" text-anchor="middle">' + esc(c.label) + "</text>");
         }
       } else {
@@ -1399,20 +1440,20 @@
 
   const CSS = `
 :host{display:block}
-.root{position:relative;box-sizing:border-box;border-radius:var(--g3d-radius,14px);
+.root{display:block;position:relative;box-sizing:border-box;border-radius:var(--g3d-radius,14px);
   padding:12px 12px 10px;background:var(--g3d-paper);color:var(--g3d-ink);
   box-shadow:var(--g3d-relief);container-type:inline-size;overflow:hidden}
 .root.flat{box-shadow:none;border:1px solid var(--g3d-edge)}
 .hdr{display:flex;align-items:center;gap:7px;margin:0 0 6px;min-height:20px}
 .hdr ha-icon{--mdc-icon-size:19px;color:var(--g3d-accent);flex:0 0 auto}
 .nm{font-size:13px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;
-  color:var(--g3d-ink);opacity:.82;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  color:var(--g3d-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stage{position:relative;width:100%;margin:0 auto}
 .g3d-svg{display:block;width:100%;height:100%;overflow:visible}
 .g3d-ico{transition:transform .55s cubic-bezier(.4,0,.2,1),opacity .3s;
   opacity:var(--fi-op,1);pointer-events:none}
 .g3d-ico ha-icon{display:block;--mdc-icon-size:var(--fi-size,22px);
-  color:var(--g3d-fico,rgba(255,255,255,.92));filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+  color:var(--g3d-fico,rgba(255,255,255,.92))}
 .g3d-fill{transition:transform .55s cubic-bezier(.4,0,.2,1)}
 .g3d-ghost{transition:transform .55s cubic-bezier(.4,0,.2,1)}
 .g3d-mark{transition:transform .55s cubic-bezier(.4,0,.2,1);fill:var(--g3d-accent)}
@@ -1420,11 +1461,11 @@
 .g3d-caustic{transition:opacity .4s}
 .g3d-tk{stroke:var(--g3d-rule);stroke-width:1.4;stroke-linecap:round}
 .g3d-tkm{stroke:var(--g3d-rule);stroke-width:1;opacity:.6;stroke-linecap:round}
-.g3d-tl{font-size:9.5px;fill:var(--g3d-ink);opacity:.72;font-weight:500}
-.g3d-zl{font-size:9px;fill:var(--g3d-ink);opacity:.66}
+.g3d-tl{font-size:9.5px;fill:var(--g3d-ink-dim);font-weight:500}
+.g3d-zl{font-size:9px;fill:var(--g3d-ink-dim)}
 .g3d-val{font-weight:800;fill:var(--g3d-valc);paint-order:stroke;
   stroke:var(--g3d-valhalo);stroke-width:3.4px;stroke-linejoin:round;letter-spacing:-.01em}
-.g3d-lbl{font-size:7.5px;fill:var(--g3d-ink);opacity:.62;text-transform:uppercase;letter-spacing:.06em}
+.g3d-lbl{font-size:7.5px;fill:var(--g3d-ink-dim);text-transform:uppercase;letter-spacing:.06em}
 .ft{display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:6px;min-height:0}
 .ft.hide{display:none}
 .ft .v{font-size:26px;font-weight:800;color:var(--g3d-valc);line-height:1}
@@ -1435,7 +1476,7 @@
 .tap{cursor:pointer}
 .err{padding:12px;font-size:13px;color:var(--error-color,#c33)}
 @container (max-width:180px){.nm{font-size:11px}.ft .v{font-size:20px}}
-@media (prefers-reduced-motion:reduce){.g3d-fill,.g3d-ghost,.g3d-mark,.g3d-ico{transition:none}}
+@media (prefers-reduced-motion:reduce){.g3d-fill,.g3d-ghost,.g3d-mark,.g3d-ico,.g3d-caustic{transition:none}}
 `;
 
   // ─────────────────────────────────────────────────────────────────  card
@@ -1492,7 +1533,7 @@
         "base_plate", "ground_shadow", "paper", "paper_dark", "fill_style", "segments", "ticks",
         "tick_count", "tick_labels", "tick_side", "zones", "zone_labels", "secondary_entity",
         "compare_mode", "show_name", "show_value", "value_position", "value_mode", "show_unit",
-        "show_min_max", "icon_in_fill", "label", "min", "max", "entity"]
+        "show_min_max", "icon_in_fill", "label", "label_zone", "min", "max", "entity"]
         .map((k) => JSON.stringify(c[k])).join("|");
       const remount = shape !== this._shape;
       this._shape = shape;
@@ -1565,7 +1606,7 @@
 
       const [pl, pd] = paperColors(c.paper, c.paper_dark);
       const dark = c.paper_dark === true;
-      const ink = paperInk(dark);
+      const ink = paperInk(dark);   // { text, dim, line }
       const flat = c.depth === "flat";
       const drop = flat ? "none" : c.depth === "soft"
         ? "0 4px 12px rgba(0,0,0,.12)"
@@ -1580,7 +1621,9 @@
 
       const vars = {
         "--g3d-paper": dark ? paperDarkGradient(c.paper) : paperGradient(c.paper),
-        "--g3d-ink": ink,
+        "--g3d-ink": ink.text,
+        "--g3d-ink-dim": ink.dim,
+        "--g3d-ink-line": ink.line,
         "--g3d-accent": "var(--primary-color)",
         "--g3d-relief": relief,
         "--g3d-edge": dark ? "rgba(255,255,255,.16)" : "rgba(0,0,0,.20)",
@@ -1650,6 +1693,7 @@
         s0: Array.from(this.shadowRoot.querySelectorAll(".g3d-s0")),
         s1: Array.from(this.shadowRoot.querySelectorAll(".g3d-s1")),
         s2: Array.from(this.shadowRoot.querySelectorAll(".g3d-s2")),
+        sb: Array.from(this.shadowRoot.querySelectorAll(".g3d-sb")),
         m0: Array.from(this.shadowRoot.querySelectorAll(".g3d-m0")),
         m1: Array.from(this.shadowRoot.querySelectorAll(".g3d-m1")),
         rims: Array.from(this.shadowRoot.querySelectorAll(".g3d-rim")),
@@ -1704,6 +1748,8 @@
       this._sig = sig;
 
       const base = fillColor(c, v, this._kind, unit, frac);
+      const pc = paperColors(c.paper, c.paper_dark === true);
+      const plColor = pc[0], pdColor = pc[1];
       const set = (k, val) => el.root.style.setProperty(k, val);
       const n = el.fills.length;
       for (let i = 0; i < Math.max(1, n); i++) {
@@ -1718,7 +1764,7 @@
         const b = i === 1 && r2 ? fillColor(c, v2, this._kind, unit, frac2) : base;
         s.setAttribute("stop-color", shade(b, k, a));
       });
-      stop(el.s0, -0.20, 1); stop(el.s1, 0.32, 1); stop(el.s2, -0.30, 1);
+      stop(el.s0, -0.20, 1); stop(el.s1, 0.18, 1); stop(el.sb, 0, 1); stop(el.s2, -0.30, 1);
       // menisco: centro iluminado, anel de borda na cor cheia
       stop(el.m0, 0.64, 1); stop(el.m1, -0.04, 1);
       el.rims.forEach((r) => {
@@ -1727,8 +1773,15 @@
         r.setAttribute("stroke", shade(b, 0.66, 0.9));
       });
       set("--g3d-caustic", shade(base, 0.30, 0.24));
-      const valc = v == null ? "var(--g3d-ink)" : inkOf(base, c.paper_dark === true);
+      // Onde o valor cai: papel enquanto o fluido não chega, fluido depois.
+      const yTxt = c.value_position === "in_body"
+        ? (g.vert ? (c.label ? 24 : 12) : g.T / 2)
+        : 0;
+      const sobreFluido = c.value_position === "in_body" && !g.footZone && frac * g.run > yTxt;
+      const valc = v == null ? "var(--g3d-ink)"
+        : (sobreFluido ? inkOf(base, base) : inkOf(base, plColor, pdColor));
       set("--g3d-valc", valc);
+      set("--g3d-valhalo", sobreFluido ? shade(base, -0.34, 0.55) : plColor);
 
       const off = (f) => g.vert
         ? "translate(0px," + n2((1 - f) * g.run) + "px)"
@@ -1737,7 +1790,7 @@
       el.ghosts.forEach((f) => { f.style.transform = off(frac2); });
       if (el.mark) {
         el.mark.style.transform = g.vert
-          ? "translate(0px," + n2(g.yBase - frac2 * g.run) + "px)"
+          ? "translate(0px," + n2(g.yF - frac2 * g.run) + "px)"
           : "translate(" + n2(g.x0 + frac2 * g.run) + "px,0px)";
       }
 
@@ -1761,7 +1814,7 @@
         const inset = Math.min(u * 0.45, g.T * 0.60);
         const pu = u - inset;
         const x = g.vert ? g.x0 + g.T / 2 : g.x0 + pu;
-        const y = g.vert ? g.yBase - pu : g.yBase - g.T / 2;
+        const y = g.vert ? g.yF - pu : g.yBase - g.T / 2;
         el.ico.style.transform = "translate(" + n2(x) + "px," + n2(y) + "px)";
         el.root.style.setProperty("--fi-op", u < g.T * 0.55 ? "0" : "1");
         // o mesmo cuidado para o ícone que viaja dentro do líquido
@@ -1876,7 +1929,7 @@
           if (c.ticks !== "none") {
             s.push(mk("tick_count", num(2, 12, 1)), mk("tick_labels", bool), mk("tick_side", sel(OPT.tick_side)));
           }
-          s.push(mk("show_min_max", bool), mk("show_name", bool), mk("show_value", bool),
+          s.push(mk("label_zone", bool), mk("show_min_max", bool), mk("show_name", bool), mk("show_value", bool),
             mk("value_position", sel(OPT.value_position)), mk("value_mode", sel(OPT.value_mode)),
             mk("show_unit", bool));
           return s;
@@ -2056,7 +2109,7 @@
   // Export só para o probe headless; no navegador não existe module.
   if (typeof module !== "undefined" && module.exports) {
     module.exports = { DEFAULTS, LABELS, OPT, TABS, VERSION, geometry, boxParts, cylParts,
-      paperColors, shade, toRGB, lum, inkOf, guessKind, fillColor, fmtNum, svgFor,
+      paperColors, shade, toRGB, lum, inkOf, contrast, guessKind, fillColor, fmtNum, svgFor,
       Mw3dGaugeCard, Mw3dGaugeCardEditor };
   }
 })();
