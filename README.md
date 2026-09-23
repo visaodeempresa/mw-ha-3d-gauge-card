@@ -41,8 +41,9 @@ cada repaint e é o que derruba a rolagem no celular. Por isso o preço de um n�
 | `ultra` | 2º brilho, cáustica no chão, sombra sob a tampa | 31–36 |
 
 Esses números são **o corpo do gauge**. O que não é tier soma por cima, medido na
-bancada: **régua +21 nós**, **zonas +8**, **tubo gêmeo +15**. Um gauge com régua e
-comparativo chega a ~72 — quem dimensiona uma aba precisa contar isso, não só o tier.
+bancada em `ultra`: corpo limpo **32** · com régua e rótulos **57** (+25) · com tubo
+gêmeo **72** (+40). Quem dimensiona uma aba conta isto, não só o tier — a régua custa
+mais que a diferença entre `low` e `ultra`.
 
 `quality: auto` (padrão) resolve **`ultra` no desktop**, **`high` no celular**
 (`pointer: coarse` ou largura < 500 px) e **`medium`** com `prefers-reduced-motion`.
@@ -84,7 +85,8 @@ ficaria limpa em 100 %.
 
 O valor nunca é escrito cru: `inkOf()` cede luminosidade até bater **4.5:1** contra os
 **dois extremos** do gradiente de papel (ou contra o fluido, quando cai sobre ele).
-Medido na bancada: **0 de 60 cards** abaixo do piso.
+Medido na bancada, nos dois temas e em 375 px: **0 de 60 cards** abaixo do piso, em
+nenhum texto (valor, rótulo, nome, régua, zonas, rodapé).
 
 ## Como funciona o desenho
 
@@ -433,3 +435,23 @@ editam aqui.
 ---
 
 © MAYCON WILLIAN OLIVEIRA — MIT
+
+---
+
+## Medido na bancada — v0.2.2
+
+Auditoria do agente `inspetor-de-3d-e-css` (`IA/agents/`), em 60 cards:
+
+| prova | piso | medido |
+|---|---|---|
+| `<filter>` / `feGaussianBlur` / `drop-shadow` | 0 | **0** no dist e no DOM vivo |
+| `filter` de CSS em elemento que translada | 0 | **0** |
+| `@keyframes` | 0 | **0**; toda `transition` é `transform`/`opacity` |
+| recorte do fluido respeita a faixa do valor | 0 invasões | **0 em 56**, folga de 25,6 px |
+| contraste de todo texto, dois temas | 4.5:1 | **0 reprovados em 60** |
+| saturação do fluido vs cor de origem | < 12 % | **1,7 p.p.** (stops 48,1 / 49,5 / **49,8** / 48,1 contra 49,8) |
+| `quality: auto` a 375 px, com reload | `high` | **high** em 52/52 |
+| estouro horizontal a 375 px | 0 | **0** |
+| ids de `clipPath`/gradiente duplicados | 0 | **0 em 696** |
+| alvo de toque | 44 px | **170 × 407 px** |
+| atualização de 12 cards | — | **15,1 ms** |
