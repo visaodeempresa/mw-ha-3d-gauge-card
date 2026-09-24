@@ -4,7 +4,7 @@
  */
 (() => {
   "use strict";
-  const VERSION = "0.2.2";
+  const VERSION = "0.2.3";
 
   // >>> paper-palette v1 — fonte canônica: /Volumes/SSD-T1-01/CLAUDE-SSD/IA/lib/paper-palette/paper-palette.js
   // 49 papéis encardidos: 7 matizes do arco-íris × 7 tons (1 = quase branco,
