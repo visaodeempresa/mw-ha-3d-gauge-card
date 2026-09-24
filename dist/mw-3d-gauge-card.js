@@ -1315,20 +1315,33 @@
         uid + '-caustic)"/>');
     }
 
-    // pedestal: prisma de 3 faces no high+, faixa chapada abaixo disso
+    // Pedestal: ele SEGUE A FORMA DO CORPO. Tubo redondo pousa em disco, tubo
+    // de caixa pousa em prisma — um prisma embaixo de um cilindro entrega
+    // quina quadrada onde o olho espera curva, e a peça inteira perde o 3D.
     if (c.base_plate) {
       const pw = (g.vert ? g.T + 16 + twinOff : g.L + 8);
       const px = g.vert ? g.x0 - 8 : g.x0 - 4;
-      if (q >= 2) {
-        // no cilindro g.dx é 0: sem isto a face lateral do pedestal nasce degenerada
-        const pdx = (g.dx || g.dy * 1.4) * 0.8;
-        const pp = boxParts(px, g.yBase + g.plate - 1, pw, g.plate - 2, pdx, g.dy * 0.8);
+      const pyB = g.yBase + g.plate - 1;
+      const ph = g.plate - 2;
+      if (q >= 2 && c.shape === "box") {
+        const pp = boxParts(px, pyB, pw, ph, g.dx * 0.8, g.dy * 0.8);
         parts.push('<polygon points="' + pp.side + '" fill="var(--g3d-plate-side)"/>' +
           '<polygon points="' + pp.top + '" fill="var(--g3d-plate-top)"/>' +
           '<polygon points="' + pp.front + '" fill="var(--g3d-plate)"/>');
+      } else if (q >= 2) {
+        // mesma inclinação de vista do tubo: a elipse cresce junto com o raio,
+        // senão o disco do pedestal fica visto de um ângulo que o tubo não tem
+        const baseR = g.vert ? Math.max(1, g.T / 2) : Math.max(1, g.dy);
+        const pry = Math.max(2, (g.dy || 6) * (g.vert ? (pw / 2) / baseR : 1));
+        const pc = cylParts(px, pyB, pw, ph, pry, true);
+        parts.push('<path d="' + pc.sil + '" fill="var(--g3d-plate)"/>');
+        parts.push('<ellipse cx="' + n2(pc.capE.cx) + '" cy="' + n2(pc.capE.cy) + '" rx="' +
+          n2(pc.capE.rx) + '" ry="' + n2(pc.capE.ry) + '" fill="var(--g3d-plate-top)"/>');
       } else {
+        // sem relevo: o cilindro vira pastilha, a caixa vira faixa
+        const rr = c.shape === "box" ? 2.5 : n2(ph / 2);
         parts.push('<rect x="' + n2(px) + '" y="' + n2(g.yBase + 1) + '" width="' + n2(pw) +
-          '" height="' + n2(g.plate - 2) + '" rx="2.5" fill="var(--g3d-plate)"/>');
+          '" height="' + n2(ph) + '" rx="' + rr + '" fill="var(--g3d-plate)"/>');
       }
     }
 
