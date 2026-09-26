@@ -4,7 +4,7 @@
  */
 (() => {
   "use strict";
-  const VERSION = "0.2.3";
+  const VERSION = "0.2.4";
 
   // >>> paper-palette v1 — fonte canônica: /Volumes/SSD-T1-01/CLAUDE-SSD/IA/lib/paper-palette/paper-palette.js
   // 49 papéis encardidos: 7 matizes do arco-íris × 7 tons (1 = quase branco,
@@ -1201,6 +1201,14 @@
       if (q >= 1) {
         fluid += ell({ cx: fp.capE.cx, cy: fp.capE.cy, rx: fp.capE.rx * 0.80, ry: fp.capE.ry * 0.80 },
           q >= 2 ? "url(#" + uid + "-men" + i + ")" : "var(--g3d-f-meniscus" + i + ")");
+      }
+      // camada 8 no cilindro: a aresta de luz é o arco de cima da superfície,
+      // onde a luz bate primeiro. Sem ela o menisco e a parede se fundem.
+      if (q >= 2) {
+        const e = fp.capE;
+        fluid += '<path class="g3d-rim" data-i="' + i + '" d="M' + n2(e.cx - e.rx) + " " +
+          n2(e.cy) + "A" + n2(e.rx) + " " + n2(e.ry) + " 0 0 1 " + n2(e.cx + e.rx) + " " +
+          n2(e.cy) + '"/>';
       }
     }
 

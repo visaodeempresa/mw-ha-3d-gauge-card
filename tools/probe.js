@@ -439,6 +439,14 @@ has(svg({ label: "INFOGRAPHICS", value_position: "in_body" }), "textLength",
 hasnt(svg({ label: "OK", value_position: "in_body" }), "textLength",
   "rótulo curto não precisa ser apertado");
 
+/* 17o. camada 8 — a aresta de luz existe nos DOIS formatos */
+["box", "cylinder"].forEach((shape) => {
+  has(svg({ shape, quality: "high" }), 'class="g3d-rim"',
+    `${shape}: sem aresta de luz na quina do fluido (camada 8)`);
+  hasnt(svg({ shape, quality: "medium" }), 'class="g3d-rim"',
+    `${shape}: a aresta de luz é do high para cima`);
+});
+
 /* 18. relevo de papel é sombra parada: nada de animar propriedade cara */
 const css = CODE.slice(CODE.indexOf("const CSS = `"), CODE.indexOf("`;", CODE.indexOf("const CSS = `")));
 hasnt(css, "@keyframes", "o card não deveria ter @keyframes");
